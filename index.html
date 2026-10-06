@@ -139,6 +139,14 @@ function ocrClean(lines){
     return (name?name+' ':'')+m.mult+'x';
   }).join('\n');
 }
+const NFL=['Cardinals','Falcons','Ravens','Bills','Panthers','Bears','Bengals','Browns','Cowboys','Broncos','Lions','Packers','Texans','Colts','Jaguars','Chiefs','Raiders','Chargers','Rams','Dolphins','Vikings','Patriots','Saints','Giants','Jets','Eagles','Steelers','49ers','Seahawks','Buccaneers','Titans','Commanders'];
+function gameFrom(text){
+  const k=String(text||'').toLowerCase().replace(/[^a-z0-9]/g,''),f=[];
+  NFL.forEach(t=>{const i=k.indexOf(t.toLowerCase());if(i>=0)f.push([i,t])});
+  f.sort((a,b)=>a[0]-b[0]);
+  return f.length>=2?f[0][1]+' vs '+f[1][1]:'';
+}
+const PLAYER=/(?:([A-Za-z|!1]?)\s?\.\s?)?([A-Za-z'’\-]{3,})\s+[A-Za-z]{2,3}\b\s*[|!l]?\s*(\d+(?:\.\d+)?)\s*\+/;
 function parseDraftea(lines){
   const L=(lines||[]).map(o=>({t:String(o.t||'').replace(/\s+/g,' ').trim(),y:+o.y||0})).filter(o=>o.t).sort((a,b)=>a.y-b.y);
   const all=L.map(o=>o.t).join(' ');
@@ -157,13 +165,15 @@ function parseDraftea(lines){
     const c=catOf(o.t);
     if(c){cur=c;return}
     if(!cur){
+      const pm2=o.t.match(PLAYER);
+      if(pm2){legs.push((/[A-Za-z]/.test(pm2[1]||'')?pm2[1].toUpperCase()+'. ':'')+pm2[2].replace(/^[-'’]+/,'')+' '+fmt(pm2[3])+'+ (revisa el tipo de pick)');return}
       const tm=o.t.match(/([A-ZÁÉÍÓÚ][a-záéíóúñ]{3,})\s*$/);
       if(tm&&!/hoy|draftea|entrada|ganancia|momio/i.test(o.t)&&teams.length<2)teams.push(tm[1]);
       return;
     }
     let m;
-    if((m=o.t.match(/([A-Za-z|!1]?)\s?\.\s?([A-Za-z'’\-]{3,})\s*(?:[A-Za-z]{2,3}\b)?\s*[|!l]?\s*(\d+(?:\.\d+)?)\s*\+/))){
-      legs.push((/[A-Za-z]/.test(m[1])?m[1].toUpperCase()+'. ':'')+m[2]+' '+cur+' '+fmt(m[3])+'+');cur=null;
+    if((m=o.t.match(PLAYER))){
+      legs.push((/[A-Za-z]/.test(m[1]||'')?m[1].toUpperCase()+'. ':'')+m[2].replace(/^[-'’]+/,'')+' '+cur+' '+fmt(m[3])+'+');cur=null;
     }else if(cur==='Spread'&&(m=o.t.match(/([A-Z]{2,3})\s*([+\-−–]\s*\d+(?:\.\d+)?)/))){
       legs.push(m[1]+' '+m[2].replace(/\s/g,'').replace(/[−–]/,'-')+' (spread)');cur=null;
     }else if(cur==='Puntos totales'&&(m=o.t.match(/(\d{2,3}\.\d)\s*$/))){
@@ -171,8 +181,36 @@ function parseDraftea(lines){
       legs.push('Puntos totales '+n);cur=null;
     }
   });
-  const game=teams.length===2?teams.join(' vs '):'';
+  const game=teams.length===2?teams.join(' vs '):gameFrom(all);
   return{stake:sm?parseFloat(sm[1].replace(',','.')):null,mult,payout:pm?parseFloat(pm[1].replace(',','.')):null,game,legs};
+}
+function parseCuota(lines){
+  const L=(lines||[]).map(o=>({t:String(o.t||'').replace(/\s+/g,' ').trim(),y:+o.y||0})).filter(o=>o.t).sort((a,b)=>a.y-b.y);
+  const all=L.map(o=>o.t).join(' ');
+  const mm=all.match(/Cuota\s*total\s*:?\s*(\d+[.,]\d+)/i);
+  if(!mm)return null;
+  const num=r=>{const m=all.match(r);return m?parseFloat(m[1].replace(/,/g,'')):null};
+  const mult=parseFloat(mm[1].replace(',','.'));
+  const stake=num(/Valor\s*total\s*:?\s*\$?\s*(\d[\d,]*(?:\.\d+)?)/i),payout=num(/Ganancia\s*total\s*:?\s*\$?\s*(\d[\d,]*(?:\.\d+)?)/i);
+  const market=d=>{const k=d.toLowerCase();
+    if(/pases? de touchdown|touchdowns? de pase/.test(k))return 'TD de pase';
+    if(/yardas de pase/.test(k))return 'yds de pase';
+    if(/por tierra|carrera/.test(k))return 'yds de carrera';
+    if(/yardas de recep/.test(k))return 'yds de recepción';
+    if(/recepciones/.test(k))return 'recepciones';
+    if(/touchdown|anot/.test(k))return 'TD anotado';
+    return d.replace(/\(.*$/,'').trim().slice(0,40)};
+  const legs=[];let buf=[];
+  for(const o of L){
+    if(/Crear\s*Apuesta|Cuota\s*total|Valor\s*total|Ganancia/i.test(o.t))break;
+    const m=o.t.match(/^\W*(\d{1,3}(?:\.\d)?)\s*\+\s*$/);
+    if(m){
+      const d=buf.join(' '),pm=d.match(/\(([^()]+?)\s*\(([A-Z]{2,3})\)/);
+      legs.push((pm?pm[1].trim():d.slice(0,40))+' '+market(d)+' '+m[1].replace(/\.0$/,'')+'+');buf=[];
+    }else buf.push(o.t.replace(/\s\d\.\d{2}$/,''));
+  }
+  const gm=all.match(/([A-Za-z]+)\s+vs\.?\s+(?:[A-Z]{2,3}\s+)?([A-Za-z]+)/);
+  return{stake,mult,payout,game:gameFrom(all)||(gm?gm[1]+' vs '+gm[2]:''),legs};
 }
 function rangeOf(m){return m<2?'<2x':m<3?'2–3x':m<5?'3–5x':'5x+'}
 function weekStart(now){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+3)%7));return d}
@@ -304,17 +342,23 @@ function loadOcr(){
   ocrLib=new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';sc.onload=()=>res(window.Tesseract);sc.onerror=()=>{ocrLib=null;rej(new Error('lib'))};document.head.appendChild(sc)});
   return ocrLib;
 }
-function prepImage(file){
+function prepImage(file,bin,w){
   return new Promise((res,rej)=>{
     const img=new Image(),url=URL.createObjectURL(file);
     img.onload=()=>{
-      const sc=Math.min(2.5,Math.max(1,1800/img.width)),c=document.createElement('canvas');
+      const sc=Math.min(3,Math.max(1,(w||2200)/img.width)),c=document.createElement('canvas');
       c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
       const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(img,0,0,c.width,c.height);
       const d=x.getImageData(0,0,c.width,c.height),a=d.data;let sum=0;
       for(let i=0;i<a.length;i+=4){const g=.299*a[i]+.587*a[i+1]+.114*a[i+2];a[i]=a[i+1]=a[i+2]=g;sum+=g}
       const dark=sum/(a.length/4)<128;
       if(dark)for(let i=0;i<a.length;i+=4){a[i]=a[i+1]=a[i+2]=255-a[i]}
+      if(bin){const h=new Array(256).fill(0),n=a.length/4;
+      for(let i=0;i<a.length;i+=4)h[Math.round(a[i])]++;
+      let sa=0;for(let i=0;i<256;i++)sa+=i*h[i];
+      let sb=0,wb=0,best=0,th=128;
+      for(let t=0;t<256;t++){wb+=h[t];if(!wb)continue;const wf=n-wb;if(!wf)break;sb+=t*h[t];const mb=sb/wb,mf=(sa-sb)/wf,v=wb*wf*(mb-mf)*(mb-mf);if(v>best){best=v;th=t}}
+      for(let i=0;i<a.length;i+=4){const v=a[i]>th?255:0;a[i]=a[i+1]=a[i+2]=v}}
       x.putImageData(d,0,0);URL.revokeObjectURL(url);res(c);
     };
     img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('img'))};
@@ -330,11 +374,17 @@ async function readImages(files){
     const T_=await loadOcr();let found=[],drafts=[];
     for(let i=0;i<files.length;i++){
       m.textContent='Leyendo captura '+(i+1)+' de '+files.length+'…';
-      const c=await prepImage(files[i]);
-      const r=await T_.recognize(c,'eng');
-      const ls=(r.data.lines&&r.data.lines.length)?r.data.lines.map(z=>({t:z.text,y:(z.bbox.y0+z.bbox.y1)/2})):String(r.data.text||'').split('\n').map((z,k)=>({t:z,y:k}));
-      const dr=parseDraftea(ls);
-      if(dr){drafts.push(dr);continue}
+      let best=null,bestScore=-1,lastLs=[];
+      for(const v of [[true,2200],[false,1800],[false,1200]]){
+        const c=await prepImage(files[i],v[0],v[1]);
+        const r=await T_.recognize(c,'eng');
+        const ls=(r.data.lines&&r.data.lines.length)?r.data.lines.map(z=>({t:z.text,y:(z.bbox.y0+z.bbox.y1)/2})):String(r.data.text||'').split('\n').map((z,k)=>({t:z,y:k}));
+        lastLs=ls;
+        const dr=parseDraftea(ls)||parseCuota(ls);
+        if(dr){const sc=dr.legs.length+(dr.stake?1:0);if(sc>bestScore){bestScore=sc;best=dr}if(dr.stake&&dr.legs.length)break}
+      }
+      if(best){drafts.push(best);continue}
+      const ls=lastLs;
       const t=ocrClean(ls);if(t)found.push(t);
     }
     if(drafts.length){
