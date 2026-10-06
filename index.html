@@ -89,6 +89,7 @@ ul.al{margin:6px 0 0;padding-left:18px}
     <div><label>Entrada ($)</label><input id="stake" type="number" inputmode="decimal" value="25"></div>
     <div><label>Multiplicador total (x)</label><input id="mult" type="number" inputmode="decimal" step="0.01"></div>
     <div><label>Tu prob. estimada (%) <small>(opcional)</small></label><input id="prob" type="number" inputmode="decimal"></div>
+    <div class="span2"><label>Resultado</label><select id="res"><option value="p">Pendiente</option><option value="w">Ganó</option><option value="l">Perdió</option></select></div>
     <div class="span2"><label>Picks (uno por línea)</label><textarea id="legsTxt" rows="3" maxlength="800"></textarea></div>
   </div>
   <small>Tip: si usas "Calcular ticket", los picks y el multiplicador se pasan aquí solos.</small>
@@ -109,7 +110,8 @@ ul.al{margin:6px 0 0;padding-left:18px}
   </div><small>Tu histórico antes de usar la app. Se suma al resumen.</small></div>
 
   <h2>Mis datos</h2>
-  <div class="card"><button class="o" id="del">Borrar todos mis datos</button><small>Elimina tus tickets y ajustes de forma permanente.</small></div>
+  <div class="card"><button class="o" id="exp">Descargar mis tickets (CSV)</button><small>Se abre en Excel o Google Sheets. No incluye el "punto de partida" de arriba, solo los tickets de la app.</small>
+    <div style="height:12px"></div><button class="o" id="del">Borrar todos mis datos</button><small>Elimina tus tickets y ajustes de forma permanente.</small></div>
   <p class="mu" style="font-size:12px">Registro personal, no es una casa de apuestas. Juega con responsabilidad; los cálculos son aproximados. Las probabilidades que da cada pick vienen de los multiplicadores e incluyen el margen de la casa.</p>
 </section>
 
@@ -347,7 +349,16 @@ function scoreParsed(d){
   const good=d.legs.filter(l=>l.replace(/\(.*?\)/g,'').trim().length>=4&&!/[“”‘’~@|]|\s\d\s|\swe\s|\s[A-Za-z]\s/.test(l)).length;
   return good*3+(d.stake?1:0)+(d.payout?1:0)+(d.mult?1:0);
 }
-function parseAny(lines){
+function detectResult(lines){
+  const t=(lines||[]).map(o=>o.t).join(' \n ');
+  const lost=/\bPERDID[OA]S?\b|\bLost\b|\bLoss\b|\bPerdi[oó]\b/i.test(t);
+  const won=/\bGANAD[OA]S?\b|\bWin\b|\bWon\b/i.test(t);
+  if(lost&&!won)return 'l';
+  if(won&&!lost)return 'w';
+  return null;
+}
+function parseAny(lines){const r=parseAny0(lines);if(r)r.result=detectResult(lines);return r}
+function parseAny0(lines){
   const d=parseDraftea(lines);if(d)return d;
   const c=parseCuota(lines);if(c&&c.legs.length)return c;
   return parseHouse(lines)||c||parseSobre(lines);
@@ -372,6 +383,18 @@ function marketOf(d){const k=String(d||'').toLowerCase();
   if(/recepciones/.test(k))return 'recepciones';
   if(/touchdowns? de jugador|touchdown|anot/.test(k))return 'TD';
   return ''}
+function toCsv(T){
+  const cell=v=>{let x=String(v==null?'':v);if(typeof v==='string'&&/^[=+\-@\t\r]/.test(x))x="'"+x;return '"'+x.replace(/"/g,'""')+'"'};
+  const f2=n=>Math.round(n*100)/100;
+  const d2=ms=>{const d=new Date(ms),z=n=>String(n).padStart(2,'0');return z(d.getDate())+'/'+z(d.getMonth()+1)+'/'+d.getFullYear()+' '+z(d.getHours())+':'+z(d.getMinutes())};
+  const head=['Fecha','Juego','Tipo','Entrada','Momio','Pago potencial','Resultado','Neto','Prob estimada %','Picks'];
+  const rows=T.map(t=>{
+    const pot=f2(t.stake*t.mult),net=t.result==='w'?f2(pot-t.stake):t.result==='l'?-t.stake:'';
+    const picks=(t.legs||[]).map(l=>(l.r==='w'?'[ok] ':l.r==='l'?'[x] ':'')+l.n).join(' | ');
+    return [d2(t.created_at),t.game,t.type,t.stake,t.mult,pot,t.result==='w'?'Ganó':t.result==='l'?'Perdió':'Pendiente',net,t.prob||'',picks];
+  });
+  return '\ufeff'+[head].concat(rows).map(r=>r.map(cell).join(',')).join('\r\n');
+}
 function rangeOf(m){return m<2?'<2x':m<3?'2–3x':m<5?'3–5x':'5x+'}
 function weekStart(now,ws){ws=(ws===undefined||ws===null||isNaN(ws))?1:+ws;const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()-ws+7)%7));return d}
 function wsOf(S){return S&&S.pre&&S.pre.ws!==undefined&&S.pre.ws!==null?+S.pre.ws:1}
@@ -489,12 +512,12 @@ async function addTicket(){
   const stake=+$('stake').value,mult=+$('mult').value,prob=$('prob').value===''?null:+$('prob').value;
   if(!(stake>0)||!(mult>1)){$('addMsg').textContent='Pon entrada y multiplicador válidos.';return}
   if(prob!==null&&(prob<0||prob>100)){$('addMsg').textContent='La probabilidad va de 0 a 100.';return}
-  const legs=$('legsTxt').value.split('\n').map(z=>z.trim()).filter(Boolean).slice(0,12).map(n=>({n:n.slice(0,80),r:'p'}));
+  const result=$('res').value,legs=$('legsTxt').value.split('\n').map(z=>z.trim()).filter(Boolean).slice(0,12).map(n=>({n:n.slice(0,80),r:result==='w'?'w':'p'}));
   $('add').disabled=true;
-  const {data,error}=await sb.from('tickets').insert({game:($('game').value||'Ticket').trim().slice(0,80),type:$('type').value,stake,mult,prob,legs}).select().single();
+  const {data,error}=await sb.from('tickets').insert({game:($('game').value||'Ticket').trim().slice(0,80),type:$('type').value,stake,mult,prob,result,legs}).select().single();
   $('add').disabled=false;
   if(error){$('addMsg').textContent='No se pudo guardar. Intenta de nuevo.';return}
-  T.push(mapTicket(data));$('legsTxt').value='';$('prob').value='';$('mult').value='';$('addMsg').textContent='Guardado ✓';render();
+  T.push(mapTicket(data));$('legsTxt').value='';$('prob').value='';$('mult').value='';$('res').value='p';$('addMsg').textContent='Guardado ✓';render();
 }
 
 async function listAction(e){
@@ -550,16 +573,17 @@ async function readImages(files){
     const T_=await loadOcr();let found=[],drafts=[];
     for(let i=0;i<files.length;i++){
       m.textContent='Leyendo captura '+(i+1)+' de '+files.length+'…';
-      let best=null,bestScore=-1,lastLs=[];
+      let best=null,bestScore=-1,lastLs=[],resSeen=null;
       for(const v of [[true,2200],[false,1800],[false,1200]]){
         const c=await prepImage(files[i],v[0],v[1]);
         const r=await T_.recognize(c,'eng');
         const ls=(r.data.lines&&r.data.lines.length)?r.data.lines.map(z=>({t:z.text,y:(z.bbox.y0+z.bbox.y1)/2})):String(r.data.text||'').split('\n').map((z,k)=>({t:z,y:k}));
         lastLs=ls;
         const dr=parseAny(ls);
+        if(dr&&dr.result&&!resSeen)resSeen=dr.result;
         if(dr){const sc=scoreParsed(dr);if(sc>bestScore){bestScore=sc;best=dr}if(dr.stake&&dr.mult&&dr.legs.length&&dr.legs.every(l=>!/[“”‘’~@|]/.test(l)))break}
       }
-      if(best){drafts.push(best);continue}
+      if(best){if(!best.result&&resSeen)best.result=resSeen;drafts.push(best);continue}
       const ls=lastLs;
       const t=ocrClean(ls);if(t)found.push(t);
     }
@@ -570,11 +594,12 @@ async function readImages(files){
       if(d.mult)$('type').value=d.mult<2.6?'Base':d.mult<3.2?'Medio':'Largo';
       $('game').value=d.game||'';
       $('prob').value='';
+      $('res').value=d.result||'p';
       $('legsTxt').value=d.legs.join('\n');
       $('cIn').value=d.legs.join('\n')+(d.mult?'\nTotal '+d.mult+'x':'');
       if(d.legMult||d.mult)runCalc();
       if(false)$('cOut').innerHTML='<div class="card" style="background:var(--bg)"><div class="k">Leí tu ticket'+(d.game?' ('+esc(d.game)+')':'')+'</div><div class="v">Momio '+d.mult+'x</div><div class="msg">Entrada '+(d.stake?money(d.stake):'?')+(d.payout?' · pago '+money(d.payout):'')+' · '+d.legs.length+' picks<br>Para empatar necesitas acertar al menos <b>'+pc(1/d.mult)+'</b> de las veces con tickets como este.</div></div>';
-      m.className='msg';m.textContent=d.mult?'Listo: pasé entrada, momio y picks a "Guardar ticket". Revisa que estén bien y toca Guardar.':'Pasé los picks a "Guardar ticket", pero esta captura no trae entrada ni momio: escríbelos tú.';
+      m.className='msg';m.textContent=d.mult?'Listo: pasé entrada, momio y picks a "Guardar ticket"'+(d.result?' y marqué el resultado como '+(d.result==='w'?'GANÓ':'PERDIÓ'):'')+'. Revisa que estén bien y toca Guardar.':'Pasé los picks a "Guardar ticket", pero esta captura no trae entrada ni momio: escríbelos tú.';
       if(drafts.length>1)m.textContent+=' (Subiste varias capturas: solo usé la primera, sube las otras una por una.)';
       $('game').scrollIntoView({behavior:'smooth',block:'center'});
       return;
@@ -595,6 +620,14 @@ function setupUI(){
   $('pre_a').onchange=()=>{S.pre={...S.pre,w:wkKey(weekStart(Date.now(),wsOf(S))),a:Math.max(0,+$('pre_a').value||0)};saveSettings();render()};
   $('wkStart').onchange=()=>{S.pre={...S.pre,ws:+$('wkStart').value};saveSettings();render()};
   $('out').onclick=()=>sb.auth.signOut();
+  $('exp').onclick=()=>{
+    if(!T.length){status('Aún no tienes tickets para descargar.');return}
+    try{
+      const blob=new Blob([toCsv(T)],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);a.download='nakach-picks-tickets-'+wkKey(new Date())+'.csv';
+      document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    }catch(e){status('No se pudo descargar en este navegador. Prueba abrir la app en Safari o Chrome.')}
+  };
   $('del').onclick=async()=>{
     if(!confirm('Se borrarán todos tus tickets y ajustes. No se puede deshacer. ¿Continuar?'))return;
     const a=await sb.from('tickets').delete().eq('user_id',user.id),b=await sb.from('settings').delete().eq('user_id',user.id);
