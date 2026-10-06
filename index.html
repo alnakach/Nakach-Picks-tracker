@@ -61,7 +61,13 @@ ul.al{margin:6px 0 0;padding-left:18px}
   <div class="card">
     <label>Pega o escribe cada pick con su multiplicador, uno por línea</label>
     <textarea id="cIn" rows="4" placeholder="Robinson 6.5+ recepciones 1.54x&#10;Shough 234 yds 1.67x&#10;Total 2.3x   (opcional: lo que paga el ticket)"></textarea>
-    <div style="margin-top:10px"><button id="cGo">Calcular</button></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button id="cGo">Calcular</button>
+      <button class="o" id="imgBtn" type="button">📷 Subir captura</button>
+      <input id="imgIn" type="file" accept="image/*" multiple hidden>
+    </div>
+    <div id="ocrMsg" class="msg"></div>
+    <small>La captura se lee en tu propio celular: no se sube ni se guarda en ningún lado. Revisa siempre lo que leyó antes de calcular.</small>
     <div id="cOut" style="margin-top:10px"></div>
   </div>
 
@@ -119,6 +125,19 @@ function calcTicket(legs,total){
   const product=legs.reduce((a,l)=>a*l.mult,1),joint=1/product;
   const paid=total||null,discount=paid?1-paid/product:null;
   return{product,joint,paid,discount,breakeven:paid?1/paid:joint,probs:legs.map(l=>1/l.mult)};
+}
+function ocrClean(lines){
+  // lines: [{t:texto, y:centro vertical}] en el orden que salió del lector
+  const multRe=/(\d+(?:[.,]\d+)?)\s*x$/i,fix=l=>l.replace(/[×✕✖]/g,'x').replace(/\s+/g,' ').trim().replace(/\bx\s*(\d+[.,]\d+)$/i,'$1x').replace(/(\d)\s+x$/i,'$1x');
+  const L=(lines||[]).map(o=>({t:fix(o.t||''),y:+o.y||0})).filter(o=>o.t);
+  const M=[],R=[];
+  L.forEach(o=>{const m=o.t.match(multRe);if(m&&parseFloat(m[1].replace(',','.'))>1){M.push({y:o.y,mult:m[1],inline:o.t.slice(0,m.index).trim(),parts:[]})}else R.push(o)});
+  if(!M.length)return '';
+  R.forEach(o=>{let best=M[0];M.forEach(m=>{if(Math.abs(m.y-o.y)<Math.abs(best.y-o.y))best=m});best.parts.push(o)});
+  return M.sort((a,b)=>a.y-b.y).map(m=>{
+    const name=m.parts.sort((a,b)=>a.y-b.y).map(o=>o.t).concat(m.inline?[m.inline]:[]).join(' ').trim();
+    return (name?name+' ':'')+m.mult+'x';
+  }).join('\n');
 }
 function rangeOf(m){return m<2?'<2x':m<3?'2–3x':m<5?'3–5x':'5x+'}
 function weekStart(now){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+3)%7));return d}
@@ -243,7 +262,54 @@ async function listAction(e){
   t.legs=legs;t.result=result;render();
 }
 
+
+let ocrLib=null;
+function loadOcr(){
+  if(ocrLib)return ocrLib;
+  ocrLib=new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';sc.onload=()=>res(window.Tesseract);sc.onerror=()=>{ocrLib=null;rej(new Error('lib'))};document.head.appendChild(sc)});
+  return ocrLib;
+}
+function prepImage(file){
+  return new Promise((res,rej)=>{
+    const img=new Image(),url=URL.createObjectURL(file);
+    img.onload=()=>{
+      const sc=Math.min(2.5,Math.max(1,1800/img.width)),c=document.createElement('canvas');
+      c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
+      const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(img,0,0,c.width,c.height);
+      const d=x.getImageData(0,0,c.width,c.height),a=d.data;let sum=0;
+      for(let i=0;i<a.length;i+=4){const g=.299*a[i]+.587*a[i+1]+.114*a[i+2];a[i]=a[i+1]=a[i+2]=g;sum+=g}
+      const dark=sum/(a.length/4)<128;
+      if(dark)for(let i=0;i<a.length;i+=4){a[i]=a[i+1]=a[i+2]=255-a[i]}
+      x.putImageData(d,0,0);URL.revokeObjectURL(url);res(c);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('img'))};
+    img.src=url;
+  });
+}
+async function readImages(files){
+  const m=$('ocrMsg');
+  if(!files.length)return;
+  m.className='msg';m.textContent='Cargando lector de imágenes (la primera vez tarda unos segundos)…';
+  $('imgBtn').disabled=true;
+  try{
+    const T_=await loadOcr();let found=[];
+    for(let i=0;i<files.length;i++){
+      m.textContent='Leyendo captura '+(i+1)+' de '+files.length+'…';
+      const c=await prepImage(files[i]);
+      const r=await T_.recognize(c,'eng');
+      const ls=(r.data.lines&&r.data.lines.length)?r.data.lines.map(z=>({t:z.text,y:(z.bbox.y0+z.bbox.y1)/2})):String(r.data.text||'').split('\n').map((z,k)=>({t:z,y:k}));
+      const t=ocrClean(ls);if(t)found.push(t);
+    }
+    if(!found.length){m.className='msg w';m.textContent='No pude leer multiplicadores en la imagen. Prueba con una captura más nítida o escribe los picks a mano.';return}
+    const box=$('cIn');box.value=(box.value.trim()?box.value.trim()+'\n':'')+found.join('\n');
+    m.className='msg';m.textContent='Listo. Revisa que los nombres y multiplicadores estén bien (puedes corregir el texto) y vuelve a tocar Calcular si cambias algo.';
+    runCalc();
+  }catch(e){m.className='msg w';m.textContent='No se pudo leer la imagen. Revisa tu conexión o escribe los picks a mano.'}
+  finally{$('imgBtn').disabled=false;$('imgIn').value=''}
+}
+
 function setupUI(){
+  $('imgBtn').onclick=()=>$('imgIn').click();$('imgIn').onchange=e=>readImages([...e.target.files]);
   $('cGo').onclick=runCalc;$('add').onclick=addTicket;$('list').onclick=listAction;
   $('tope').onchange=()=>{S.tope=Math.max(0,+$('tope').value||0);saveSettings();render()};
   ['n','w','s','p'].forEach(k=>$('b_'+k).onchange=()=>{S.base[k]=Math.max(0,+$('b_'+k).value||0);saveSettings();render()});
