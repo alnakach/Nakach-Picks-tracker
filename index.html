@@ -144,7 +144,7 @@ function gameFrom(text){
   const k=String(text||'').toLowerCase().replace(/[^a-z0-9]/g,''),f=[];
   NFL.forEach(t=>{const i=k.indexOf(t.toLowerCase());if(i>=0)f.push([i,t])});
   f.sort((a,b)=>a[0]-b[0]);
-  return f.length>=2?f[0][1]+' vs '+f[1][1]:'';
+  return f.length>=4?'Parlay varios juegos':f.length>=2?f[0][1]+' vs '+f[1][1]:'';
 }
 const PLAYER=/(?:([A-Za-z|!1]?)\s?\.\s?)?([A-Za-z'’\-]{3,})\s+[A-Za-z]{2,3}\b\s*[|!l]?\s*(\d+(?:\.\d+)?)\s*\+/;
 function parseDraftea(lines){
@@ -212,6 +212,72 @@ function parseCuota(lines){
   const gm=all.match(/([A-Za-z]+)\s+vs\.?\s+(?:[A-Z]{2,3}\s+)?([A-Za-z]+)/);
   return{stake,mult,payout,game:gameFrom(all)||(gm?gm[1]+' vs '+gm[2]:''),legs};
 }
+function parseHouse(lines){
+  const L=(lines||[]).map(o=>({t:String(o.t||'').replace(/[−–—]/g,'-').replace(/\s+/g,' ').trim(),y:+o.y||0})).filter(o=>o.t).sort((a,b)=>a.y-b.y);
+  if(!L.length)return null;
+  const gaps=[];for(let i=1;i<L.length;i++){const g=L[i].y-L[i-1].y;if(g>=10)gaps.push(g)}
+  gaps.sort((a,b)=>a-b);const tol=0.4*(gaps.length?gaps[Math.floor(gaps.length/2)]:60);
+  const am=x=>{const n=parseFloat(String(x).replace('-','-'));return n>0?1+n/100:1+100/Math.abs(n)};
+  function val(labelRe,valRe){
+    for(let i=0;i<L.length;i++){
+      const m=L[i].t.match(labelRe);if(!m)continue;
+      const rest=L[i].t.slice(m.index+m[0].length),v=rest.match(valRe);
+      if(v)return{v:v[1],i};
+      let best=null;
+      L.forEach((o,j)=>{if(j===i)return;const d=Math.abs(o.y-L[i].y);if(d<=tol&&!labelRe.test(o.t)){const w=o.t.match(valRe);if(w&&(!best||d<best.d))best={d,v:w[1],i}}});
+      if(best)return best;
+    }
+    return null;
+  }
+  const num=r=>r?parseFloat(r.v.replace(/,/g,'')):null;
+  const O=val(/\b(?:Momios?|Cuota total|Odds)\b\s*:?/i,/^\s*:?\s*([+-]?\d+(?:[.,]\d+)?)\s*x?\s*$/i)||val(/\b(?:Momios?|Cuota total|Odds)\b\s*:?/i,/([+-]?\d+(?:[.,]\d+)?)/);
+  const S=val(/\b(?:Apuesta total|Valor total|Stake)\b\s*:?/i,/\$\s*(\d[\d,]*(?:\.\d+)?)/);
+  const P=val(/\b(?:Ganancia\s*total|Payout)\b\s*:?/i,/\$\s*(\d[\d,]*(?:\.\d+)?)/);
+  const stake=num(S),payout=num(P);
+  if(!stake&&!payout&&!O)return null;
+  let mult=null,oraw=O?O.v.replace(',','.'):null;
+  if(stake&&payout&&payout>stake)mult=Math.round(payout/stake*1000)/1000;
+  else if(oraw!==null){const n=parseFloat(oraw);mult=(/^[+-]/.test(oraw)||Math.abs(n)>=100)?am(n):n}
+  if(!(mult>1))return null;
+  const endIdx=O?O.i:L.length;
+  const body=L.slice(0,endIdx);
+  const legs=[];let pend=null;
+  const thr=/(\d+(?:\.\d)?)\s*\+/,odd=/(?:^|\s)([+-]\d{3,4})\s*$/;
+  const flush=()=>{if(pend){legs.push(pend.n+(pend.m?' '+Math.round(pend.m*100)/100+'x':''));pend=null}};
+  body.forEach(o=>{
+    const pm=o.t.match(/\(([^()]+?)\s*\(([A-Z]{2,3})\)\)/);
+    if(pm){flush();pend={n:pm[1].trim()+' '+marketOf(o.t)+' ',m:null,t:null};return}
+    if(!pend)return;
+    const t=o.t.match(thr),d=o.t.match(odd);
+    if(t&&pend.t===null){pend.t=t[1].replace(/\.0$/,'')+'+';pend.n+=pend.t}
+    if(d&&pend.m===null)pend.m=am(d[1]);
+  });
+  flush();
+  if(!legs.length){
+    for(let i=0;i<body.length-1;i++){
+      const m=body[i].t.match(/^(.+?)\s+([+-]\d{2,4})$/);
+      if(m&&/ganador|handicap|spread|total|moneyline/i.test(body[i+1].t)){
+        const kind=/ganador/i.test(body[i+1].t)?'ganador':/spread|handicap/i.test(body[i+1].t)?'spread':'total';
+        legs.push(m[1].trim()+' '+kind+' '+Math.round(am(m[2])*100)/100+'x');
+      }
+    }
+  }
+  if(!legs.length&&O&&/odds/i.test(L[O.i].t+(L[O.i-1]?L[O.i-1].t:''))){
+    const ti=L.findIndex(o=>/^\W*\w{0,3}\s*Win\b|Loss|Lost|Open/i.test(o.t));
+    const names=[];for(let j=Math.max(0,ti+1);j<L.length&&names.length<2;j++){const t=L[j].t.replace(/^\W*\d?\s+/,'');if(/^(Tue|Mon|Wed|Thu|Fri|Sat|Sun)\b/i.test(t)||/Odds|Stake/i.test(t))break;if(/[A-Za-z]{3,}/.test(t)){const c=t.replace(/^ist/i,'1st').replace(/\bWin\b/i,'').replace(/\s+/g,' ').trim();if(c)names.push(c)}}
+    if(names.length)legs.push(names.join(' '));
+  }
+  const legMult=legs.length>0&&legs.every(l=>/\d+(?:\.\d+)?x$/.test(l));
+  return{stake,mult,payout,game:gameFrom(L.map(o=>o.t).join(' ')),legs,legMult};
+}
+function marketOf(d){const k=String(d||'').toLowerCase();
+  if(/pases? de touchdown|touchdowns? de pase/.test(k))return 'TD de pase';
+  if(/yardas de pase/.test(k))return 'yds de pase';
+  if(/por tierra|carrera/.test(k))return 'yds de carrera';
+  if(/yardas de recep/.test(k))return 'yds de recepción';
+  if(/recepciones/.test(k))return 'recepciones';
+  if(/touchdowns? de jugador|touchdown|anot/.test(k))return 'TD';
+  return ''}
 function rangeOf(m){return m<2?'<2x':m<3?'2–3x':m<5?'3–5x':'5x+'}
 function weekStart(now){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+3)%7));return d}
 function wkKey(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
@@ -380,7 +446,7 @@ async function readImages(files){
         const r=await T_.recognize(c,'eng');
         const ls=(r.data.lines&&r.data.lines.length)?r.data.lines.map(z=>({t:z.text,y:(z.bbox.y0+z.bbox.y1)/2})):String(r.data.text||'').split('\n').map((z,k)=>({t:z,y:k}));
         lastLs=ls;
-        const dr=parseDraftea(ls)||parseCuota(ls);
+        const dr=parseDraftea(ls)||parseCuota(ls)||parseHouse(ls);
         if(dr){const sc=dr.legs.length+(dr.stake?1:0);if(sc>bestScore){bestScore=sc;best=dr}if(dr.stake&&dr.legs.length)break}
       }
       if(best){drafts.push(best);continue}
@@ -393,7 +459,8 @@ async function readImages(files){
       if(d.game)$('game').value=d.game;
       $('type').value=d.mult<2.6?'Base':d.mult<3.2?'Medio':'Largo';
       $('legsTxt').value=d.legs.join('\n');
-      $('cOut').innerHTML='<div class="card" style="background:var(--bg)"><div class="k">Leí tu ticket'+(d.game?' ('+esc(d.game)+')':'')+'</div><div class="v">Momio '+d.mult+'x</div><div class="msg">Entrada '+(d.stake?money(d.stake):'?')+(d.payout?' · pago '+money(d.payout):'')+' · '+d.legs.length+' picks<br>Para empatar necesitas acertar al menos <b>'+pc(1/d.mult)+'</b> de las veces con tickets como este.</div></div>';
+      if(d.legMult){$('cIn').value=d.legs.join('\n')+'\nTotal '+d.mult+'x';runCalc();}
+      if(!d.legMult)$('cOut').innerHTML='<div class="card" style="background:var(--bg)"><div class="k">Leí tu ticket'+(d.game?' ('+esc(d.game)+')':'')+'</div><div class="v">Momio '+d.mult+'x</div><div class="msg">Entrada '+(d.stake?money(d.stake):'?')+(d.payout?' · pago '+money(d.payout):'')+' · '+d.legs.length+' picks<br>Para empatar necesitas acertar al menos <b>'+pc(1/d.mult)+'</b> de las veces con tickets como este.</div></div>';
       m.className='msg';m.textContent='Listo: pasé entrada, momio y picks a "Guardar ticket". Revisa que estén bien y toca Guardar.'+(drafts.length>1?' (Subiste varias capturas: solo usé la primera, sube las otras una por una.)':'');
       $('game').scrollIntoView({behavior:'smooth',block:'center'});
       return;
