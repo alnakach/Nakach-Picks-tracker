@@ -139,6 +139,41 @@ function ocrClean(lines){
     return (name?name+' ':'')+m.mult+'x';
   }).join('\n');
 }
+function parseDraftea(lines){
+  const L=(lines||[]).map(o=>({t:String(o.t||'').replace(/\s+/g,' ').trim(),y:+o.y||0})).filter(o=>o.t).sort((a,b)=>a.y-b.y);
+  const all=L.map(o=>o.t).join(' ');
+  const mm=all.match(/Momio\s*:?\s*(\d+(?:[.,]\d+)?)\s*x/i);
+  if(!mm)return null;
+  const mult=parseFloat(mm[1].replace(',','.'));
+  const sm=all.match(/Entrada\s*:?\s*\$?\s*(\d+(?:[.,]\d+)?)/i),pm=all.match(/\$\s*(\d+(?:[.,]\d+)?)\s*Ganancia/i);
+  const CAT=[['PASESDETD','TD de pase'],['YDSDERECEP','yds de recepción'],['RECEPCIONES','recepciones'],['TDSANOTADOS','TD anotado'],['YDSDEPASE','yds de pase'],['YDSDECARRERA','yds de carrera'],['PUNTOSTOTALES','Puntos totales'],['SPREAD','Spread'],['COMPLETACIONES','completaciones'],['INTENTOS','intentos'],['SACKS','sacks'],['INTERCEPCIONES','intercepciones']];
+  const letters=t=>t.toUpperCase().replace(/[^A-ZÁÉÍÓÚÑ]/g,'');
+  const catOf=t=>{const k=letters(t);for(const c of CAT)if(k.includes(c[0]))return c[1];return null};
+  const start=L.findIndex(o=>/Momio/i.test(o.t));
+  const body=L.slice(start+1),teams=[];
+  let cur=null;const legs=[];
+  const fmt=v=>String(v).replace(/\.0+$/,'');
+  body.forEach(o=>{
+    const c=catOf(o.t);
+    if(c){cur=c;return}
+    if(!cur){
+      const tm=o.t.match(/([A-ZÁÉÍÓÚ][a-záéíóúñ]{3,})\s*$/);
+      if(tm&&!/hoy|draftea|entrada|ganancia|momio/i.test(o.t)&&teams.length<2)teams.push(tm[1]);
+      return;
+    }
+    let m;
+    if((m=o.t.match(/([A-Za-z|!1]?)\s?\.\s?([A-Za-z'’\-]{3,})\s*(?:[A-Za-z]{2,3}\b)?\s*[|!l]?\s*(\d+(?:\.\d+)?)\s*\+/))){
+      legs.push((/[A-Za-z]/.test(m[1])?m[1].toUpperCase()+'. ':'')+m[2]+' '+cur+' '+fmt(m[3])+'+');cur=null;
+    }else if(cur==='Spread'&&(m=o.t.match(/([A-Z]{2,3})\s*([+\-−–]\s*\d+(?:\.\d+)?)/))){
+      legs.push(m[1]+' '+m[2].replace(/\s/g,'').replace(/[−–]/,'-')+' (spread)');cur=null;
+    }else if(cur==='Puntos totales'&&(m=o.t.match(/(\d{2,3}\.\d)\s*$/))){
+      let n=m[1];if(n.length>4)n=n.slice(-4);
+      legs.push('Puntos totales '+n);cur=null;
+    }
+  });
+  const game=teams.length===2?teams.join(' vs '):'';
+  return{stake:sm?parseFloat(sm[1].replace(',','.')):null,mult,payout:pm?parseFloat(pm[1].replace(',','.')):null,game,legs};
+}
 function rangeOf(m){return m<2?'<2x':m<3?'2–3x':m<5?'3–5x':'5x+'}
 function weekStart(now){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+3)%7));return d}
 function wkKey(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
@@ -292,13 +327,26 @@ async function readImages(files){
   m.className='msg';m.textContent='Cargando lector de imágenes (la primera vez tarda unos segundos)…';
   $('imgBtn').disabled=true;
   try{
-    const T_=await loadOcr();let found=[];
+    const T_=await loadOcr();let found=[],drafts=[];
     for(let i=0;i<files.length;i++){
       m.textContent='Leyendo captura '+(i+1)+' de '+files.length+'…';
       const c=await prepImage(files[i]);
       const r=await T_.recognize(c,'eng');
       const ls=(r.data.lines&&r.data.lines.length)?r.data.lines.map(z=>({t:z.text,y:(z.bbox.y0+z.bbox.y1)/2})):String(r.data.text||'').split('\n').map((z,k)=>({t:z,y:k}));
+      const dr=parseDraftea(ls);
+      if(dr){drafts.push(dr);continue}
       const t=ocrClean(ls);if(t)found.push(t);
+    }
+    if(drafts.length){
+      const d=drafts[0];
+      $('stake').value=d.stake||$('stake').value;$('mult').value=d.mult.toFixed(2);
+      if(d.game)$('game').value=d.game;
+      $('type').value=d.mult<2.6?'Base':d.mult<3.2?'Medio':'Largo';
+      $('legsTxt').value=d.legs.join('\n');
+      $('cOut').innerHTML='<div class="card" style="background:var(--bg)"><div class="k">Leí tu ticket'+(d.game?' ('+esc(d.game)+')':'')+'</div><div class="v">Momio '+d.mult+'x</div><div class="msg">Entrada '+(d.stake?money(d.stake):'?')+(d.payout?' · pago '+money(d.payout):'')+' · '+d.legs.length+' picks<br>Para empatar necesitas acertar al menos <b>'+pc(1/d.mult)+'</b> de las veces con tickets como este.</div></div>';
+      m.className='msg';m.textContent='Listo: pasé entrada, momio y picks a "Guardar ticket". Revisa que estén bien y toca Guardar.'+(drafts.length>1?' (Subiste varias capturas: solo usé la primera, sube las otras una por una.)':'');
+      $('game').scrollIntoView({behavior:'smooth',block:'center'});
+      return;
     }
     if(!found.length){m.className='msg w';m.textContent='No pude leer multiplicadores en la imagen. Prueba con una captura más nítida o escribe los picks a mano.';return}
     const box=$('cIn');box.value=(box.value.trim()?box.value.trim()+'\n':'')+found.join('\n');
