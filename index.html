@@ -48,6 +48,10 @@ ul.al{margin:6px 0 0;padding-left:18px}
     </div>
     <label>Correo</label><input id="email" type="email" inputmode="email" autocomplete="email" placeholder="tu@correo.com">
     <div style="margin-top:10px"><button id="mBtn" style="width:100%">Enviarme un enlace de acceso</button></div>
+    <div id="codeBox" class="hide" style="margin-top:12px">
+      <label>Código del correo</label><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456">
+      <div style="margin-top:10px"><button id="vBtn" style="width:100%">Entrar con el código</button></div>
+    </div>
     <div id="authMsg" class="msg"></div>
   </div>
   <p class="mu" style="font-size:12px">Esta herramienta es un registro personal. No recibe apuestas ni maneja dinero. Juega con responsabilidad y solo con dinero que puedas perder; los cálculos son aproximados y no garantizan resultados.</p>
@@ -478,9 +482,11 @@ function runCalc(){
   const p=parseTicket($('cIn').value);
   if(!p.legs.length&&p.total){
     lastCalc=null;
-    $('cOut').innerHTML='<div class="card" style="background:var(--bg)"><div class="k">Para empatar necesitas acertar</div><div class="v">'+pc(1/p.total)+'</div></div>'+
+    const n=p.bad.length,pt=1/p.total;
+    $('cOut').innerHTML='<div class="card" style="background:var(--bg)"><div class="k">Probabilidad del ticket según la casa</div><div class="v">'+pc(pt)+'</div>'+
+      '<div class="msg mu">Es 1 ÷ momio total ('+p.total+'x). Incluye el margen de la casa, así que la real suele ser algo menor. También es lo que necesitas acertar para empatar.</div></div>'+
+      (n>=2?'<div class="msg">Promedio por pick: <b>'+pc(Math.pow(pt,1/n))+'</b> <small>('+n+' picks)</small></div><div class="msg mu">Es un promedio: no puedo saber cuál pick es más fácil o más difícil sin su momio individual.</div>':'')+
       (p.bad.length?'<div class="msg mu">Picks leídos: '+p.bad.map(esc).join(' · ')+'</div>':'')+
-      '<div class="msg mu">Esta captura no trae el momio de cada pick, así que no puedo sacar la probabilidad del ticket. Si lo conoces, escribe cada pick con su multiplicador (ej. Shough 234 yds 1.67x).</div>'+
       '<div style="margin-top:10px"><button class="o" id="useBtn2">Pasar a "Guardar ticket"</button></div>';
     $('useBtn2').onclick=()=>{
       $('legsTxt').value=p.bad.join('\n');
@@ -653,8 +659,19 @@ function init(){
     $('mBtn').disabled=true;
     const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
     $('mBtn').disabled=false;
-    $('authMsg').textContent=error?'No se pudo enviar el correo. Intenta en un momento.':'Listo. Revisa tu correo (y la carpeta de spam) y abre el enlace desde este mismo teléfono.';
+    if(error){$('authMsg').textContent='No se pudo enviar el correo. Intenta en un momento.';return}
+    $('codeBox').classList.remove('hide');$('code').focus();
+    $('authMsg').textContent='Listo. Revisa tu correo (y spam) y escribe aquí el código que te llegó. No necesitas salir de la app.';
   };
+  $('vBtn').onclick=async()=>{
+    const email=$('email').value.trim(),token=$('code').value.replace(/\D/g,'');
+    if(token.length<6){$('authMsg').textContent='Escribe el código completo del correo.';return}
+    $('vBtn').disabled=true;
+    const {error}=await sb.auth.verifyOtp({email,token,type:'email'});
+    $('vBtn').disabled=false;
+    if(error)$('authMsg').textContent='Código incorrecto o vencido. Pide uno nuevo.';
+  };
+  $('code').addEventListener('keydown',e=>{if(e.key==='Enter')$('vBtn').click()});
   sb.auth.onAuthStateChange((ev,session)=>{
     const u=session&&session.user;
     if(u&&(!user||user.id!==u.id)){user=u;$('who').textContent=u.email||'';showApp(true);setTimeout(load,0)}
