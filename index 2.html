@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tracker de Tickets</title>
+<style>
+:root{--bg:#fff;--card:#f3f4f7;--tx:#16181d;--mu:#6b7280;--ac:#6d4aff;--g:#12a150;--r:#d93636;--w:#b45309}
+@media (prefers-color-scheme:dark){:root{--bg:#0e0f13;--card:#1a1c23;--tx:#f1f2f5;--mu:#8b92a1;--ac:#9a82ff;--g:#35d07f;--r:#ff6b6b;--w:#fbbf24}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:max(16px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));max-width:560px;margin:auto}
+h1{font-size:20px;margin:4px 0 8px}h2{font-size:13px;color:var(--mu);margin:22px 0 8px;text-transform:uppercase;letter-spacing:.05em}
+.card{background:var(--card);border-radius:14px;padding:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.span2{grid-column:span 2}
+.k{font-size:12px;color:var(--mu)}.v{font-size:22px;font-weight:700}
+.g{color:var(--g)}.r{color:var(--r)}.w{color:var(--w)}
+input,select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid var(--mu);background:var(--bg);color:var(--tx);font:inherit}
+label{font-size:12px;color:var(--mu);display:block;margin-bottom:3px}
+button{padding:10px 14px;border:0;border-radius:10px;background:var(--ac);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.s{background:transparent;color:var(--tx);border:1px solid var(--mu);padding:6px 10px;font-size:13px}
+button.o{background:transparent;color:var(--tx);border:1px solid var(--mu);width:100%}
+button:disabled{opacity:.5}
+.row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:1px solid rgba(128,128,128,.25)}.row:last-child{border:0}
+.bar{height:8px;background:rgba(128,128,128,.3);border-radius:8px;overflow:hidden;margin-top:6px}.bar>i{display:block;height:100%;background:var(--ac)}
+.tbl{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px 4px;text-align:right}th:first-child,td:first-child{text-align:left}th{color:var(--mu);font-weight:500}
+small,.mu{color:var(--mu)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+ul.al{margin:6px 0 0;padding-left:18px}
+.hide{display:none}
+.msg{margin-top:8px;font-size:13px}
+</style></head><body>
+
+<section id="auth">
+  <h1>🎯 Tracker de Tickets</h1>
+  <p class="mu">Lleva el registro de tus tickets, tu ROI y tu tope semanal. Tus datos son privados: solo tú los ves.</p>
+  <div class="card">
+    <div id="gWrap" class="hide">
+      <button id="gBtn" class="o">Entrar con Google</button>
+      <div class="mu" style="text-align:center;margin:10px 0">o con tu correo</div>
+    </div>
+    <label>Correo</label><input id="email" type="email" inputmode="email" autocomplete="email" placeholder="tu@correo.com">
+    <div style="margin-top:10px"><button id="mBtn" style="width:100%">Enviarme un enlace de acceso</button></div>
+    <div id="authMsg" class="msg"></div>
+  </div>
+  <p class="mu" style="font-size:12px">Esta herramienta es un registro personal. No recibe apuestas ni maneja dinero. Juega con responsabilidad y solo con dinero que puedas perder; los cálculos son aproximados y no garantizan resultados.</p>
+</section>
+
+<section id="app" class="hide">
+  <div class="top"><h1>🎯 Tracker</h1><div><small id="who"></small> <button class="s" id="out">Salir</button></div></div>
+  <div id="st" class="k"></div>
+
+  <h2>Resumen</h2><div class="grid" id="sum"></div>
+
+  <h2>Presupuesto semanal <small>(jue–lun)</small></h2>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:end"><div><span class="v" id="wk">$0</span> <small>de</small></div><div style="width:110px"><input id="tope" type="number" inputmode="numeric"></div></div>
+    <div class="bar"><i id="wkb" style="width:0"></i></div>
+    <div id="wkMsg" class="msg"></div>
+  </div>
+
+  <h2>Calcular un ticket</h2>
+  <div class="card">
+    <label>Pega o escribe cada pick con su multiplicador, uno por línea</label>
+    <textarea id="cIn" rows="4" placeholder="Robinson 6.5+ recepciones 1.54x&#10;Shough 234 yds 1.67x&#10;Total 2.3x   (opcional: lo que paga el ticket)"></textarea>
+    <div style="margin-top:10px"><button id="cGo">Calcular</button></div>
+    <div id="cOut" style="margin-top:10px"></div>
+  </div>
+
+  <h2>Guardar ticket</h2>
+  <div class="card"><div class="grid">
+    <div class="span2"><label>Juego / descripción</label><input id="game" placeholder="Falcons vs Saints" maxlength="80"></div>
+    <div><label>Tipo</label><select id="type"><option>Base</option><option selected>Medio</option><option>Largo</option></select></div>
+    <div><label>Entrada ($)</label><input id="stake" type="number" inputmode="decimal" value="25"></div>
+    <div><label>Multiplicador total (x)</label><input id="mult" type="number" inputmode="decimal" step="0.01"></div>
+    <div><label>Tu prob. estimada (%) <small>(opcional)</small></label><input id="prob" type="number" inputmode="decimal"></div>
+    <div class="span2"><label>Picks (uno por línea)</label><textarea id="legsTxt" rows="3" maxlength="800"></textarea></div>
+  </div>
+  <small>Tip: si usas "Calcular ticket", los picks y el multiplicador se pasan aquí solos.</small>
+  <div style="margin-top:10px"><button id="add">Guardar ticket</button></div>
+  <div id="addMsg" class="msg"></div></div>
+
+  <h2>Mis tickets</h2><div class="card" id="list"><small>Cargando…</small></div>
+
+  <h2>Por rango de momio</h2><div class="card tbl"><table id="rng"></table></div>
+  <h2>Por pick</h2><div class="card tbl"><table id="lg"></table></div>
+  <h2>Calibración</h2><div class="card" id="cal"><small>Guarda tus tickets con probabilidad estimada para ver si coincide con tus aciertos.</small></div>
+
+  <h2>Punto de partida</h2>
+  <div class="card"><div class="grid">
+    <div><label>Tickets</label><input id="b_n" type="number"></div><div><label>Ganados</label><input id="b_w" type="number"></div>
+    <div><label>Apostado ($)</label><input id="b_s" type="number"></div><div><label>Cobrado ($)</label><input id="b_p" type="number"></div>
+    <div class="span2"><label>Gasto previo en esta semana, fuera de la app ($)</label><input id="pre_a" type="number" inputmode="numeric"></div>
+  </div><small>Tu histórico antes de usar la app. Se suma al resumen.</small></div>
+
+  <h2>Mis datos</h2>
+  <div class="card"><button class="o" id="del">Borrar todos mis datos</button><small>Elimina tus tickets y ajustes de forma permanente.</small></div>
+  <p class="mu" style="font-size:12px">Registro personal, no es una casa de apuestas. Juega con responsabilidad; los cálculos son aproximados. Las probabilidades que da cada pick vienen de los multiplicadores e incluyen el margen de la casa.</p>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/*LOGIC_START*/
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>(n<0?'-':'')+'$'+Math.abs(Math.round(n)).toLocaleString('es-MX');
+const pc=n=>isFinite(n)?(n*100).toFixed(1)+'%':'–';
+function parseTicket(text){
+  const legs=[],bad=[];let total=null;
+  String(text||'').split('\n').map(z=>z.trim()).filter(Boolean).forEach(line=>{
+    const m=line.match(/(\d+(?:[.,]\d+)?)\s*x\s*$/i);
+    if(!m){bad.push(line);return}
+    const mult=parseFloat(m[1].replace(',','.')),name=line.slice(0,m.index).trim().replace(/[\s:–-]+$/,'');
+    if(!(mult>1)){bad.push(line);return}
+    if(/^(total|ticket|pago|paga)\b/i.test(name)||(!name&&legs.length)){total=mult;return}
+    legs.push({n:name||'Pick',mult});
+  });
+  return{legs,total,bad};
+}
+function calcTicket(legs,total){
+  if(!legs.length)return null;
+  const product=legs.reduce((a,l)=>a*l.mult,1),joint=1/product;
+  const paid=total||null,discount=paid?1-paid/product:null;
+  return{product,joint,paid,discount,breakeven:paid?1/paid:joint,probs:legs.map(l=>1/l.mult)};
+}
+function rangeOf(m){return m<2?'<2x':m<3?'2–3x':m<5?'3–5x':'5x+'}
+function weekStart(now){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+3)%7));return d}
+function wkKey(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function computeStats(T,S,now){
+  const b=S.base||{n:0,w:0,s:0,p:0},res=T.filter(x=>x.result!=='p'),won=res.filter(x=>x.result==='w');
+  const n=b.n+res.length,hw=b.w+won.length,stk=b.s+res.reduce((a,x)=>a+x.stake,0),pay=b.p+won.reduce((a,x)=>a+x.stake*x.mult,0);
+  const ws=weekStart(now),pre=S.pre&&S.pre.w===wkKey(ws)?+S.pre.a||0:0;
+  const spent=T.filter(x=>x.created_at>=ws.getTime()).reduce((a,x)=>a+x.stake,0)+pre;
+  const ranges={};['<2x','2–3x','3–5x','5x+'].forEach(r=>ranges[r]={t:0,w:0,s:0,p:0});
+  res.forEach(x=>{const g=ranges[rangeOf(x.mult)];g.t++;g.s+=x.stake;if(x.result==='w'){g.w++;g.p+=x.stake*x.mult}});
+  const L={};T.forEach(t=>(t.legs||[]).forEach(l=>{if(l.r==='p')return;const k=String(l.n).toLowerCase();(L[k]=L[k]||{n:l.n,t:0,w:0});L[k].t++;if(l.r==='w')L[k].w++}));
+  const legs=Object.values(L).sort((a,b)=>b.t-a.t||b.w-a.w);
+  const cal=res.filter(x=>x.prob>0);
+  return{n,hw,stk,pay,net:pay-stk,spent,ranges,legs,calN:cal.length,calExp:cal.reduce((a,x)=>a+x.prob/100,0),calAct:cal.filter(x=>x.result==='w').length};
+}
+function adviceFor(calc,legsCount,stats,tope){
+  const out=[];
+  if(calc.discount!==null){
+    if(calc.discount>0.04)out.push('Draftea te paga '+(calc.discount*100).toFixed(0)+'% menos que multiplicar las legs ('+calc.product.toFixed(2)+'x vs '+calc.paid+'x). Suele pasar en combinadas del mismo partido, porque las casas ajustan el pago cuando los picks se relacionan entre sí.');
+    else if(calc.discount<-0.04)out.push('El pago total ('+calc.paid+'x) es mayor que multiplicar las legs ('+calc.product.toFixed(2)+'x). Revisa que escribiste bien los multiplicadores.');
+    else out.push('El pago total coincide con multiplicar las legs.');
+  }
+  if(legsCount>=4)out.push('Son '+legsCount+' picks. Cada pick extra baja mucho la probabilidad de que entre el ticket completo.');
+  if(calc.joint<0.1)out.push('Es un ticket largo: por cada 10 que juegas así, esperas que entre cerca de '+Math.max(0.1,calc.joint*10).toFixed(1)+'. Juégalo con una entrada pequeña.');
+  const r=stats.ranges[rangeOf(calc.paid||calc.product)];
+  if(r&&r.t>=5)out.push('En tu historial dentro de la app, los tickets de este rango han entrado '+pc(r.w/r.t)+' ('+r.w+' de '+r.t+').');
+  const left=tope-stats.spent;
+  if(left<=0)out.push('Ya llegaste a tu tope de esta semana.');
+  else if(left<tope*0.2)out.push('Te quedan '+money(left)+' de tu tope semanal.');
+  return out;
+}
+/*LOGIC_END*/
+
+const SUPABASE_URL='https://ncqgzjkpnfvfzzvkrlkd.supabase.co';
+const SUPABASE_KEY='sb_publishable_qsCV6EME62XGoITCEAk5sQ_jJZ-XYUJ';
+let sb=null,user=null,T=[],S={tope:250,base:{n:0,w:0,s:0,p:0},pre:{w:'',a:0}},lastCalc=null;
+const $=id=>document.getElementById(id);
+const status=m=>{$('st').textContent=m||''};
+
+function mapTicket(r){return{id:r.id,game:r.game,type:r.type,stake:+r.stake,mult:+r.mult,prob:r.prob==null?0:+r.prob,result:r.result,legs:Array.isArray(r.legs)?r.legs:[],created_at:new Date(r.created_at).getTime()}}
+
+async function load(){
+  status('Cargando…');
+  const [t,s]=await Promise.all([sb.from('tickets').select('*').order('created_at',{ascending:true}),sb.from('settings').select('*').maybeSingle()]);
+  if(t.error||s.error){status('No se pudieron cargar tus datos. Revisa tu conexión.');return}
+  T=(t.data||[]).map(mapTicket);
+  if(s.data)S={tope:+s.data.tope,base:s.data.base,pre:s.data.pre};
+  status('');render();
+}
+async function saveSettings(){
+  const {error}=await sb.from('settings').upsert({user_id:user.id,tope:S.tope,base:S.base,pre:S.pre,updated_at:new Date().toISOString()});
+  status(error?'No se pudo guardar. Intenta de nuevo.':'Guardado ✓');
+}
+
+function render(){
+  const st=computeStats(T,S,Date.now());
+  const col=st.net>=0?'g':'r';
+  $('sum').innerHTML=[['Tickets',st.n],['Aciertos',st.hw+' ('+pc(st.hw/st.n)+')'],['Apostado',money(st.stk)],['Cobrado',money(st.pay)],['Neto','<span class="'+col+'">'+money(st.net)+'</span>'],['ROI','<span class="'+col+'">'+pc(st.net/st.stk)+'</span>']]
+    .map(a=>'<div class="card"><div class="k">'+a[0]+'</div><div class="v">'+a[1]+'</div></div>').join('');
+  $('wk').textContent=money(st.spent);$('tope').value=S.tope;
+  const pct=S.tope>0?Math.min(100,st.spent/S.tope*100):100;
+  $('wkb').style.width=pct+'%';$('wkb').style.background=st.spent>S.tope?'var(--r)':'var(--ac)';
+  $('wkMsg').innerHTML=st.spent>S.tope?'<span class="r">Pasaste tu tope de la semana.</span>':st.spent>=S.tope*0.8?'<span class="w">Vas en '+Math.round(pct)+'% de tu tope.</span>':'';
+  $('rng').innerHTML='<tr><th>Rango</th><th>Tickets</th><th>Hit</th><th>ROI</th></tr>'+Object.entries(st.ranges).map(([k,g])=>'<tr><td>'+k+'</td><td>'+g.t+'</td><td>'+(g.t?pc(g.w/g.t):'–')+'</td><td>'+(g.s?pc((g.p-g.s)/g.s):'–')+'</td></tr>').join('');
+  $('lg').innerHTML=st.legs.length?'<tr><th>Pick</th><th>Aciertos</th><th>Hit</th></tr>'+st.legs.map(g=>'<tr><td>'+esc(g.n)+'</td><td>'+g.w+'/'+g.t+'</td><td>'+pc(g.w/g.t)+'</td></tr>').join(''):'<tr><td><small>Marca cada pick con ✅/❌ en tus tickets para ver cuáles fallan más.</small></td></tr>';
+  if(st.calN)$('cal').innerHTML='Esperabas <b>'+st.calExp.toFixed(1)+'</b> aciertos y salieron <b>'+st.calAct+'</b> <small>(en '+st.calN+' tickets con estimación)</small>';
+  $('list').innerHTML=T.length?T.slice().reverse().map(x=>{
+    const c=x.result==='w'?'g':x.result==='l'?'r':'';
+    return '<div class="row"><div style="min-width:0"><b>'+esc(x.game)+'</b> <small>'+esc(x.type)+' · '+x.legs.length+' picks'+(x.prob?' · '+x.prob+'%':'')+'</small><br><small>'+new Date(x.created_at).toLocaleDateString('es-MX')+' · '+money(x.stake)+' @ '+x.mult+'x → '+money(x.stake*x.mult)+'</small>'+
+    (x.legs.length?'<div style="margin-top:4px">'+x.legs.map((l,j)=>'<button class="s" style="margin:2px 2px 0 0" data-i="'+esc(x.id)+'" data-l="'+j+'" data-a="leg">'+(l.r==='w'?'✅':l.r==='l'?'❌':'⏳')+' '+esc(l.n)+'</button>').join('')+'</div>':'')+'</div><div style="text-align:right;white-space:nowrap">'+
+    (x.result==='p'?'<button class="s" data-i="'+esc(x.id)+'" data-a="w">✓</button> <button class="s" data-i="'+esc(x.id)+'" data-a="l">✗</button>':'<span class="'+c+'">'+(x.result==='w'?'Ganó':'Perdió')+'</span> <button class="s" data-i="'+esc(x.id)+'" data-a="p">↺</button>')+
+    ' <button class="s" data-i="'+esc(x.id)+'" data-a="x">🗑</button></div></div>'}).join(''):'<small>Sin tickets todavía.</small>';
+  ['n','w','s','p'].forEach(k=>$('b_'+k).value=S.base[k]);
+  $('pre_a').value=S.pre&&S.pre.w===wkKey(weekStart(Date.now()))?S.pre.a:0;
+}
+
+function runCalc(){
+  const p=parseTicket($('cIn').value);
+  if(!p.legs.length){$('cOut').innerHTML='<span class="w">Escribe al menos un pick con su multiplicador, por ejemplo: Shough 234 yds 1.67x</span>';lastCalc=null;return}
+  const c=calcTicket(p.legs,p.total),st=computeStats(T,S,Date.now());
+  lastCalc={p,c};
+  const adv=adviceFor(c,p.legs.length,st,S.tope);
+  $('cOut').innerHTML=
+    '<table><tr><th>Pick</th><th>Mult.</th><th>Prob. según la casa</th></tr>'+p.legs.map((l,i)=>'<tr><td>'+esc(l.n)+'</td><td>'+l.mult+'x</td><td>'+pc(c.probs[i])+'</td></tr>').join('')+'</table>'+
+    '<div class="grid" style="margin-top:10px"><div class="card" style="background:var(--bg)"><div class="k">Prob. del ticket (legs independientes)</div><div class="v">'+pc(c.joint)+'</div></div>'+
+    '<div class="card" style="background:var(--bg)"><div class="k">'+(c.paid?'Para empatar necesitas':'Multiplicador de las legs')+'</div><div class="v">'+(c.paid?pc(c.breakeven):c.product.toFixed(2)+'x')+'</div></div></div>'+
+    (adv.length?'<ul class="al">'+adv.map(a=>'<li>'+esc(a)+'</li>').join('')+'</ul>':'')+
+    (p.bad.length?'<div class="msg w">No pude leer estas líneas (les falta el multiplicador, por ejemplo 1.54x): '+p.bad.map(esc).join(' | ')+'</div>':'')+
+    '<div class="msg mu">Las probabilidades salen de los multiplicadores e incluyen el margen de la casa, así que las reales suelen ser algo menores. Es una guía, no una predicción.</div>'+
+    '<div style="margin-top:10px"><button class="o" id="useBtn">Pasar a "Guardar ticket"</button></div>';
+  $('useBtn').onclick=()=>{
+    $('legsTxt').value=p.legs.map(l=>l.n+' '+l.mult+'x').join('\n');
+    $('mult').value=(c.paid||c.product).toFixed(2);
+    $('game').focus();$('game').scrollIntoView({behavior:'smooth',block:'center'});
+  };
+}
+
+async function addTicket(){
+  const stake=+$('stake').value,mult=+$('mult').value,prob=$('prob').value===''?null:+$('prob').value;
+  if(!(stake>0)||!(mult>1)){$('addMsg').textContent='Pon entrada y multiplicador válidos.';return}
+  if(prob!==null&&(prob<0||prob>100)){$('addMsg').textContent='La probabilidad va de 0 a 100.';return}
+  const legs=$('legsTxt').value.split('\n').map(z=>z.trim()).filter(Boolean).slice(0,12).map(n=>({n:n.slice(0,80),r:'p'}));
+  $('add').disabled=true;
+  const {data,error}=await sb.from('tickets').insert({game:($('game').value||'Ticket').trim().slice(0,80),type:$('type').value,stake,mult,prob,legs}).select().single();
+  $('add').disabled=false;
+  if(error){$('addMsg').textContent='No se pudo guardar. Intenta de nuevo.';return}
+  T.push(mapTicket(data));$('legsTxt').value='';$('prob').value='';$('mult').value='';$('addMsg').textContent='Guardado ✓';render();
+}
+
+async function listAction(e){
+  const b=e.target.closest('button');if(!b)return;
+  const id=b.dataset.i,a=b.dataset.a,t=T.find(x=>x.id===id);if(!t)return;
+  if(a==='x'){if(!confirm('¿Borrar este ticket?'))return;const {error}=await sb.from('tickets').delete().eq('id',id);if(!error){T=T.filter(x=>x.id!==id);render()}return}
+  let legs=t.legs,result=t.result;
+  if(a==='leg'){
+    legs=t.legs.map((l,i)=>i===+b.dataset.l?{...l,r:{p:'w',w:'l',l:'p'}[l.r]}:l);
+    if(legs.some(z=>z.r==='l'))result='l';else if(legs.every(z=>z.r==='w'))result='w';else if(result!=='p'&&legs.every(z=>z.r!=='l'))result='p';
+  }else result=a;
+  const {error}=await sb.from('tickets').update({legs,result}).eq('id',id);
+  if(error){status('No se pudo guardar el cambio.');return}
+  t.legs=legs;t.result=result;render();
+}
+
+function setupUI(){
+  $('cGo').onclick=runCalc;$('add').onclick=addTicket;$('list').onclick=listAction;
+  $('tope').onchange=()=>{S.tope=Math.max(0,+$('tope').value||0);saveSettings();render()};
+  ['n','w','s','p'].forEach(k=>$('b_'+k).onchange=()=>{S.base[k]=Math.max(0,+$('b_'+k).value||0);saveSettings();render()});
+  $('pre_a').onchange=()=>{S.pre={w:wkKey(weekStart(Date.now())),a:Math.max(0,+$('pre_a').value||0)};saveSettings();render()};
+  $('out').onclick=()=>sb.auth.signOut();
+  $('del').onclick=async()=>{
+    if(!confirm('Se borrarán todos tus tickets y ajustes. No se puede deshacer. ¿Continuar?'))return;
+    const a=await sb.from('tickets').delete().eq('user_id',user.id),b=await sb.from('settings').delete().eq('user_id',user.id);
+    if(a.error||b.error){status('No se pudo borrar. Intenta de nuevo.');return}
+    T=[];S={tope:250,base:{n:0,w:0,s:0,p:0},pre:{w:'',a:0}};render();status('Tus datos fueron borrados.');
+  };
+}
+
+function showApp(on){$('auth').classList.toggle('hide',on);$('app').classList.toggle('hide',!on)}
+
+function init(){
+  if(!window.supabase){$('authMsg').textContent='No se pudo cargar la app. Revisa tu conexión y recarga.';return}
+  sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  setupUI();
+  if(/[?&]google\b/.test(location.search))$('gWrap').classList.remove('hide');
+  $('gBtn').onclick=async()=>{
+    const {error}=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}});
+    if(error)$('authMsg').textContent='Google todavía no está activado. Usa tu correo.';
+  };
+  $('mBtn').onclick=async()=>{
+    const email=$('email').value.trim();
+    if(!/^\S+@\S+\.\S+$/.test(email)){$('authMsg').textContent='Escribe un correo válido.';return}
+    $('mBtn').disabled=true;
+    const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
+    $('mBtn').disabled=false;
+    $('authMsg').textContent=error?'No se pudo enviar el correo. Intenta en un momento.':'Listo. Revisa tu correo (y la carpeta de spam) y abre el enlace desde este mismo teléfono.';
+  };
+  sb.auth.onAuthStateChange((ev,session)=>{
+    const u=session&&session.user;
+    if(u&&(!user||user.id!==u.id)){user=u;$('who').textContent=u.email||'';showApp(true);setTimeout(load,0)}
+    else if(!u){user=null;T=[];showApp(false)}
+  });
+}
+if(typeof document!=='undefined'&&typeof window!=='undefined'&&document.getElementById('auth'))init();
+</script>
+</body></html>
