@@ -33,7 +33,9 @@ ul.al{margin:6px 0 0;padding-left:18px}
 .logo{display:block;width:100%;max-width:340px;margin:0 auto 6px;border-radius:16px;background:#000}
 .logo-s{width:auto;height:46px;max-width:none;margin:0;border-radius:10px;display:block}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#app.guest .need{display:none}
 .hide{display:none}
+.rem{border-left:4px solid var(--ac)}
 .msg{margin-top:8px;font-size:13px}
 </style></head><body>
 
@@ -54,14 +56,26 @@ ul.al{margin:6px 0 0;padding-left:18px}
     </div>
     <div id="authMsg" class="msg"></div>
   </div>
+  <div style="margin-top:12px"><button class="o" id="guestBtn">Probar la calculadora sin cuenta</button>
+    <p class="mu" style="font-size:12px;text-align:center;margin:6px 0 0">Sube una captura de tu ticket y mira su probabilidad. No necesitas registrarte; solo para guardar.</p></div>
   <p class="mu" style="font-size:12px">Esta herramienta es un registro personal. No recibe apuestas ni maneja dinero. Juega con responsabilidad y solo con dinero que puedas perder; los cálculos son aproximados y no garantizan resultados.</p>
 </section>
 
 <section id="app" class="hide">
   <div class="top"><img id="logoB" class="logo-s" alt="Nakach Picks Tracker"><h1 class="vh">Nakach Picks Tracker</h1><div><small id="who"></small> <button class="s" id="out">Salir</button></div></div>
   <div id="st" class="k"></div>
+  <div id="gBanner" class="card rem hide" style="margin-top:8px"><small>Estás probando sin cuenta: la calculadora y la lectura de capturas funcionan igual, pero nada se guarda.</small> <button class="s" id="gLogin" style="margin-top:6px">Crear cuenta / entrar</button></div>
+  <div id="rem" class="card rem hide" style="margin-top:8px"></div>
 
+  <div class="need">
   <h2>Resumen</h2><div class="grid" id="sum"></div>
+  <div class="card" style="margin-top:8px">
+    <button class="o" id="rcBtn">📤 Resumen de la semana para compartir</button>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="rcAmt" checked style="width:auto">Mostrar montos ($)</label>
+    <div id="rcOut" class="hide"><img id="rcImg" alt="Resumen de la semana" style="width:100%;border-radius:12px;margin-top:10px">
+      <div style="display:flex;gap:8px;margin-top:8px"><button id="rcShare" style="flex:1">Compartir</button><button class="o" id="rcDl" style="flex:1">Descargar</button></div></div>
+    <div id="rcMsg" class="msg"></div>
+  </div>
 
   <h2>Presupuesto semanal <small id="wkRange"></small></h2>
   <div class="card">
@@ -70,6 +84,8 @@ ul.al{margin:6px 0 0;padding-left:18px}
     <div id="wkMsg" class="msg"></div>
     <div style="margin-top:10px"><label>La semana empieza el</label>
       <select id="wkStart"><option value="1">Lunes</option><option value="2">Martes</option><option value="3">Miércoles</option><option value="4">Jueves</option><option value="5">Viernes</option><option value="6">Sábado</option><option value="0">Domingo</option></select></div>
+  </div>
+
   </div>
 
   <h2>Calcular un ticket</h2>
@@ -86,6 +102,7 @@ ul.al{margin:6px 0 0;padding-left:18px}
     <div id="cOut" style="margin-top:10px"></div>
   </div>
 
+  <div class="need">
   <h2>Guardar ticket</h2>
   <div class="card"><div class="grid">
     <div class="span2"><label>Juego / descripción</label><input id="game" placeholder="Ej. Dodgers vs Braves o Parlay del domingo" maxlength="80"></div>
@@ -116,6 +133,7 @@ ul.al{margin:6px 0 0;padding-left:18px}
   <h2>Mis datos</h2>
   <div class="card"><button class="o" id="exp">Descargar mis tickets (CSV)</button><small>Se abre en Excel o Google Sheets. No incluye el "punto de partida" de arriba, solo los tickets de la app.</small>
     <div style="height:12px"></div><button class="o" id="del">Borrar todos mis datos</button><small>Elimina tus tickets y ajustes de forma permanente.</small></div>
+  </div>
   <p class="mu" style="font-size:12px">Registro personal, no es una casa de apuestas. Juega con responsabilidad; los cálculos son aproximados. Las probabilidades que da cada pick vienen de los multiplicadores e incluyen el margen de la casa.</p>
 </section>
 
@@ -463,10 +481,19 @@ function adviceFor(calc,legsCount,stats,tope){
   else if(left<tope*0.2)out.push('Te quedan '+money(left)+' de tu tope semanal.');
   return out;
 }
+function weekRecap(T,S,now){
+  const ws=weekStart(now,wsOf(S)),be=new Date(ws);be.setDate(be.getDate()+7);
+  const a=ws.getTime(),b=be.getTime(),we=b-864e5;
+  const W=T.filter(x=>x.created_at>=a&&x.created_at<b);
+  const res=W.filter(x=>x.result!=='p'),won=res.filter(x=>x.result==='w');
+  const stk=res.reduce((t,x)=>t+x.stake,0),pay=won.reduce((t,x)=>t+x.stake*x.mult,0);
+  return{ws:a,we,n:W.length,done:res.length,won:won.length,pend:W.length-res.length,stk,pay,net:pay-stk,roi:stk?(pay-stk)/stk:null,hit:res.length?won.length/res.length:null,best:won.length?Math.max(...won.map(x=>x.mult)):null};
+}
 /*LOGIC_END*/
 
 const SUPABASE_URL='https://ncqgzjkpnfvfzzvkrlkd.supabase.co';
 const SUPABASE_KEY='sb_publishable_qsCV6EME62XGoITCEAk5sQ_jJZ-XYUJ';
+let guest=false,carry=false;const LOGIN_MSG='Entra con tu correo para guardar este ticket. Queda listo, no tienes que volver a subir la captura.';
 let sb=null,user=null,T=[],S={tope:250,base:{n:0,w:0,s:0,p:0},pre:{w:'',a:0}},lastCalc=null;
 const $=id=>document.getElementById(id);
 const status=m=>{$('st').textContent=m||''};
@@ -491,6 +518,9 @@ function render(){
   const col=st.net>=0?'g':'r';
   $('sum').innerHTML=[['Tickets',st.n],['Aciertos',st.hw+' ('+pc(st.hw/st.n)+')'],['Apostado',money(st.stk)],['Cobrado',money(st.pay)],['Neto','<span class="'+col+'">'+money(st.net)+'</span>'],['ROI','<span class="'+col+'">'+pc(st.net/st.stk)+'</span>']]
     .map(a=>'<div class="card"><div class="k">'+a[0]+'</div><div class="v">'+a[1]+'</div></div>').join('');
+  const pend=T.filter(x=>x.result==='p'&&Date.now()-x.created_at>3*36e5).length;
+  $('rem').classList.toggle('hide',!pend);
+  if(pend){$('rem').innerHTML='<b>⏳ '+pend+(pend===1?' ticket pendiente':' tickets pendientes')+'</b> <small>por marcar como ganado o perdido.</small> <button class="s" id="remBtn" style="margin-left:6px">Ver</button>';$('remBtn').onclick=()=>$('list').scrollIntoView({behavior:'smooth',block:'start'})}
   $('wk').textContent=money(st.spent);$('tope').value=S.tope;
   const pct=S.tope>0?Math.min(100,st.spent/S.tope*100):100;
   $('wkb').style.width=pct+'%';$('wkb').style.background=st.spent>S.tope?'var(--r)':'var(--ac)';
@@ -523,6 +553,7 @@ function runCalc(){
     $('useBtn2').onclick=()=>{
       $('legsTxt').value=p.bad.join('\n');
       $('mult').value=p.total.toFixed(2);
+      if(!user){carry=true;goLogin(LOGIN_MSG);return}
       $('game').focus();$('game').scrollIntoView({behavior:'smooth',block:'center'});
     };
     return;
@@ -542,6 +573,7 @@ function runCalc(){
   $('useBtn').onclick=()=>{
     $('legsTxt').value=p.legs.map(l=>l.n+' '+l.mult+'x').join('\n');
     $('mult').value=(c.paid||c.product).toFixed(2);
+    if(!user){carry=true;goLogin(LOGIN_MSG);return}
     $('game').focus();$('game').scrollIntoView({behavior:'smooth',block:'center'});
   };
 }
@@ -650,14 +682,70 @@ async function readImages(files){
   finally{$('imgBtn').disabled=false;$('imgIn').value=''}
 }
 
+function showGuest(){guest=true;$('app').classList.add('guest');$('who').textContent='Modo prueba';$('out').textContent='Entrar';$('gBanner').classList.remove('hide');showApp(true);window.scrollTo(0,0)}
+function leaveGuest(){guest=false;$('app').classList.remove('guest');$('out').textContent='Salir';$('gBanner').classList.add('hide')}
+function goLogin(msg){leaveGuest();showApp(false);$('authMsg').textContent=msg||'';window.scrollTo(0,0)}
+
+let rcBlob=null;
+function drawRecap(R,amt,img){
+  const W=1080,H=1350,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+  const F=(w,s)=>w+' '+s+'px system-ui,-apple-system,Segoe UI,Roboto,sans-serif';
+  x.fillStyle='#000';x.fillRect(0,0,W,H);
+  const g=x.createRadialGradient(540,620,40,540,620,760);g.addColorStop(0,'rgba(74,222,80,.20)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.fillRect(0,0,W,H);
+  if(img)x.drawImage(img,290,20,500,Math.round(500*img.naturalHeight/img.naturalWidth));
+  x.textAlign='center';
+  const fd=t=>new Date(t).toLocaleDateString('es-MX',{day:'numeric',month:'short'});
+  x.fillStyle='#8e9892';x.font=F('600',34);x.fillText('MI SEMANA',540,440);
+  x.fillStyle='#f1f3f2';x.font=F('700',46);x.fillText(fd(R.ws)+' – '+fd(R.we),540,498);
+  const win=R.net>=0;
+  x.fillStyle=amt?(win?'#4ade50':'#ff6b6b'):'#4ade50';x.font=F('800',amt?170:190);
+  x.fillText(amt?money(R.net):(R.hit===null?'–':pc(R.hit)),540,700);
+  x.fillStyle='#8e9892';x.font=F('600',36);x.fillText(amt?'neto de la semana':'de aciertos',540,760);
+  const cards=[['Tickets',String(R.n)],['Aciertos',R.done?R.won+' de '+R.done:'–'],['ROI',R.roi===null?'–':pc(R.roi)],amt?['Apostado',money(R.stk)]:['Mejor momio',R.best?R.best.toFixed(2)+'x':'–']];
+  cards.forEach((k,i)=>{
+    const cx=70+(i%2)*470,cy=820+Math.floor(i/2)*215,w=470-20,h=190;
+    x.fillStyle='#111513';x.beginPath();x.roundRect?x.roundRect(cx,cy,w,h,28):x.rect(cx,cy,w,h);x.fill();
+    x.fillStyle='#8e9892';x.font=F('600',34);x.fillText(k[0],cx+w/2,cy+62);
+    x.fillStyle='#f1f3f2';x.font=F('800',72);x.fillText(k[1],cx+w/2,cy+148);
+  });
+  x.fillStyle='#4ade50';x.font=F('700',38);x.fillText('Nakach Picks Tracker',540,1290);
+  x.fillStyle='#8e9892';x.font=F('500',26);x.fillText('Registro personal · juega con responsabilidad',540,1326);
+  return c;
+}
+async function makeRecap(){
+  const R=weekRecap(T,S,Date.now());
+  if(!R.n){$('rcMsg').textContent='Todavía no tienes tickets esta semana.';$('rcOut').classList.add('hide');return}
+  $('rcMsg').textContent=R.done?'':'Aún no marcas resultados esta semana; marca tus tickets como ganados o perdidos para que el resumen cuente.';
+  const img=await new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=LOGO});
+  const c=drawRecap(R,$('rcAmt').checked,img);
+  rcBlob=await new Promise(r=>c.toBlob(r,'image/png'));
+  if(!rcBlob){$('rcMsg').textContent='No se pudo crear la imagen en este navegador.';return}
+  $('rcImg').src=c.toDataURL('image/png');$('rcOut').classList.remove('hide');
+}
+function saveRecap(){
+  const a=document.createElement('a');a.href=URL.createObjectURL(rcBlob);a.download='mi-semana-'+wkKey(new Date())+'.png';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+async function shareRecap(){
+  if(!rcBlob)return;
+  try{
+    const f=new File([rcBlob],'mi-semana.png',{type:'image/png'});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'Mi semana · Nakach Picks Tracker'});return}
+  }catch(e){if(e&&e.name==='AbortError')return}
+  saveRecap();$('rcMsg').textContent='Se descargó la imagen. Compártela desde tu galería.';
+}
+
 function setupUI(){
+  $('rcBtn').onclick=makeRecap;$('rcAmt').onchange=()=>{if(!$('rcOut').classList.contains('hide'))makeRecap()};
+  $('rcShare').onclick=shareRecap;$('rcDl').onclick=()=>{if(rcBlob)saveRecap()};
+  $('gLogin').onclick=()=>goLogin('');
   $('imgBtn').onclick=()=>$('imgIn').click();$('imgIn').onchange=e=>readImages([...e.target.files]);
   $('cGo').onclick=runCalc;$('add').onclick=addTicket;$('list').onclick=listAction;
   $('tope').onchange=()=>{S.tope=Math.max(0,+$('tope').value||0);saveSettings();render()};
   ['n','w','s','p'].forEach(k=>$('b_'+k).onchange=()=>{S.base[k]=Math.max(0,+$('b_'+k).value||0);saveSettings();render()});
   $('pre_a').onchange=()=>{S.pre={...S.pre,w:wkKey(weekStart(Date.now(),wsOf(S))),a:Math.max(0,+$('pre_a').value||0)};saveSettings();render()};
   $('wkStart').onchange=()=>{S.pre={...S.pre,ws:+$('wkStart').value};saveSettings();render()};
-  $('out').onclick=()=>sb.auth.signOut();
+  $('out').onclick=()=>guest?goLogin(''):sb.auth.signOut();
   $('exp').onclick=()=>{
     if(!T.length){status('Aún no tienes tickets para descargar.');return}
     try{
@@ -681,6 +769,7 @@ function init(){
   sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
   setupUI();
   if(/[?&]google\b/.test(location.search))$('gWrap').classList.remove('hide');
+  $('guestBtn').onclick=showGuest;
   $('gBtn').onclick=async()=>{
     const {error}=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}});
     if(error)$('authMsg').textContent='Google todavía no está activado. Usa tu correo.';
@@ -706,8 +795,8 @@ function init(){
   $('code').addEventListener('keydown',e=>{if(e.key==='Enter')$('vBtn').click()});
   sb.auth.onAuthStateChange((ev,session)=>{
     const u=session&&session.user;
-    if(u&&(!user||user.id!==u.id)){user=u;$('who').textContent=u.email||'';showApp(true);setTimeout(load,0)}
-    else if(!u){user=null;T=[];showApp(false)}
+    if(u&&(!user||user.id!==u.id)){user=u;leaveGuest();$('who').textContent=u.email||'';showApp(true);setTimeout(load,0);if(carry){carry=false;setTimeout(()=>{$('game').scrollIntoView({behavior:'smooth',block:'center'})},900)}}
+    else if(!u){user=null;T=[];if(!guest)showApp(false)}
   });
 }
 if(typeof document!=='undefined'&&typeof window!=='undefined'&&document.getElementById('auth'))init();
