@@ -247,6 +247,37 @@ function parseDraftea(lines){
   const game=blocks>1?'Parlay ('+blocks+' juegos)':(teams.length>=2?teams.slice(0,2).join(' vs '):'');
   return{stake,mult,payout,game:game||gameFrom(all),legs};
 }
+function parseSlip(lines){
+  const L=normL(lines);
+  const all=L.map(o=>o.t).join(' ');
+  if(!(/Monto/i.test(all)&&/Momio/i.test(all)&&/Ganancia/i.test(all)))return null;
+  const fi=L.findIndex(o=>/Monto|Momio|Ganancia/i.test(o.t));
+  const body=L.slice(0,fi),foot=L.slice(fi);
+  const ft=foot.map(o=>o.t).join(' ');
+  const pm=[...ft.matchAll(/\$\s*(\d[\d,]*\.\d{2})/g)].pop();
+  let payout=pm?toNum(pm[1]):null;
+  const mm=ft.match(/(\d{1,3}\.\d{1,2})\s*[xX×]/);
+  let mult=mm?parseFloat(mm[1]):null;
+  const vt=foot.filter(o=>!/Monto|Momio|Ganancia/i.test(o.t)).map(o=>o.t.replace(/\$\s*\d[\d,]*\.\d{2}/g,' ').replace(/\d{1,3}\.\d{1,2}\s*[xX×]/g,' ')).join(' ');
+  const tk=[...vt.matchAll(/\d+/g)].map(m=>m[0]).filter(x=>x.length>=2);
+  let stake=/\$\s*(\d+)/.test(vt)?toNum(vt.match(/\$\s*(\d+)/)[1]):(tk.length?toNum(tk[0]):null);
+  if(mult&&payout&&(!stake||Math.abs(stake*mult-payout)>0.03*payout))stake=Math.round(payout/mult);
+  if(!mult&&stake&&payout&&payout>stake)mult=Math.round(payout/stake*100)/100;
+  if(!(mult>1))return null;
+  const legs=[],pairs=[];let cur=null;
+  const PL=/([A-Z][A-Za-z'’\-.]+(?:\s+[A-Z][A-Za-z'’\-.]+)?)\s+([A-Z]{2,4})\b[^\d\n]{0,6}(\d+(?:\.\d+)?)\s*\+/;
+  for(const o of body){
+    const vs=o.t.match(/\b([A-Z]{2,4})\s*vs\s*([A-Z]{2,4})\b/);
+    if(vs){const k=vs[1]+' vs '+vs[2];if(pairs.indexOf(k)<0)pairs.push(k);continue}
+    const c=dCat(o.t);
+    if(c){cur=c;continue}
+    const m=o.t.match(PL);
+    if(m){legs.push(m[1].trim()+' '+(cur||'')+' '+m[3].replace(/\.0+$/,'')+'+');cur=null}
+  }
+  if(!legs.length)return null;
+  const game=pairs.length>1?'Parlay ('+pairs.length+' juegos)':(pairs[0]||'');
+  return{stake,mult,payout,game,legs};
+}
 function parseCuota(lines){
   const L=normL(lines);
   const all=L.map(o=>o.t).join(' ');
@@ -365,6 +396,7 @@ function parseAny(lines){const r=parseAny0(lines);if(r)r.result=detectResult(lin
 function parseAny0(lines){
   const d=parseDraftea(lines);if(d)return d;
   const c=parseCuota(lines);if(c&&c.legs.length)return c;
+  const sl=parseSlip(lines);if(sl)return sl;
   return parseHouse(lines)||c||parseSobre(lines);
 }
 function parseSobre(lines){
