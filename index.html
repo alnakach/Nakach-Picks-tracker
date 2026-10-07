@@ -110,6 +110,7 @@ ul.al{margin:6px 0 0;padding-left:18px}
     <div><label>Entrada ($)</label><input id="stake" type="number" inputmode="decimal" value="25"></div>
     <div><label>Multiplicador total (x)</label><input id="mult" type="number" inputmode="decimal" step="0.01"></div>
     <div><label>Tu prob. estimada (%) <small>(opcional)</small></label><input id="prob" type="number" inputmode="decimal"></div>
+    <div class="span2"><label>Hora del último partido <small>(opcional, para avisarte cuando termine)</small></label><input id="gtime" type="datetime-local"></div>
     <div class="span2"><label>Resultado</label><select id="res"><option value="p">Pendiente</option><option value="w">Ganó</option><option value="l">Perdió</option></select></div>
     <div class="span2"><label>Picks (uno por línea)</label><textarea id="legsTxt" rows="3" maxlength="800"></textarea></div>
   </div>
@@ -410,7 +411,7 @@ function detectResult(lines){
   if(won&&!lost)return 'w';
   return null;
 }
-function parseAny(lines){const r=parseAny0(lines);if(r)r.result=detectResult(lines);return r}
+function parseAny(lines,now){const r=parseAny0(lines);if(r){r.result=detectResult(lines);r.start=parseStart(lines,now||Date.now())}return r}
 function parseAny0(lines){
   const d=parseDraftea(lines);if(d)return d;
   const c=parseCuota(lines);if(c&&c.legs.length)return c;
@@ -489,6 +490,28 @@ function weekRecap(T,S,now){
   const stk=res.reduce((t,x)=>t+x.stake,0),pay=won.reduce((t,x)=>t+x.stake*x.mult,0);
   return{ws:a,we,n:W.length,done:res.length,won:won.length,pend:W.length-res.length,stk,pay,net:pay-stk,roi:stk?(pay-stk)/stk:null,hit:res.length?won.length/res.length:null,best:won.length?Math.max(...won.map(x=>x.mult)):null};
 }
+const MES={ene:0,feb:1,mar:2,abr:3,may:4,jun:5,jul:6,ago:7,sep:8,oct:9,nov:10,dic:11};
+function hmOf(h,mi,ap){h=+h;mi=+mi;if(ap){ap=ap.toLowerCase();if(ap==='pm'&&h<12)h+=12;if(ap==='am'&&h===12)h=0}return(h>23||mi>59)?null:[h,mi]}
+function parseStart(lines,now){
+  const t=(lines||[]).map(o=>String(o.t||'')).join(' \n ').replace(/ñ/gi,'n');
+  const out=[],T='\\(?\\s*(\\d{1,2})\\s*:\\s*(\\d{2})\\s*(am|pm)?\\)?';
+  let m,r;
+  const rel=new RegExp('\\b(Hoy|Manana)\\b\\s*[\\-•·,]?\\s*'+T,'gi');
+  while((m=rel.exec(t))){const hm=hmOf(m[2],m[3],m[4]);if(!hm)continue;const d=new Date(now);d.setHours(hm[0],hm[1],0,0);if(/^m/i.test(m[1]))d.setDate(d.getDate()+1);out.push(d.getTime())}
+  const ab='(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)';
+  const dm=new RegExp('(\\d{1,2})\\s*(?:/|de|\\s)\\s*'+ab+'[a-z]*\\.?\\s*[\\-•·,(]*\\s*'+T,'gi');
+  while((m=dm.exec(t))){const hm=hmOf(m[3],m[4],m[5]);if(!hm)continue;const d=new Date(now);d.setMonth(MES[m[2].toLowerCase()],+m[1]);d.setHours(hm[0],hm[1],0,0);if(d.getTime()<now-30*864e5)d.setFullYear(d.getFullYear()+1);out.push(d.getTime())}
+  return out.length?Math.max(...out):null;
+}
+const GAME_MS=4*36e5;
+function startOf(t){const ts=(t.legs||[]).map(l=>+l.t).filter(x=>x>0);return ts.length?Math.max(...ts):null}
+function fmtIn(ms){const m=Math.max(1,Math.round(ms/6e4));if(m<60)return m+' min';const h=Math.floor(m/60);if(h<24)return h+' h'+(m%60?' '+(m%60)+' min':'');return Math.round(h/24)+' d'}
+function liveState(t,now){
+  const s=startOf(t);if(!s||t.result!=='p')return null;
+  if(now<s)return{k:'soon',ms:s-now,at:s};
+  if(now<s+GAME_MS)return{k:'live',ms:s+GAME_MS-now,at:s};
+  return{k:'done',ms:now-s-GAME_MS,at:s};
+}
 /*LOGIC_END*/
 
 const SUPABASE_URL='https://ncqgzjkpnfvfzzvkrlkd.supabase.co';
@@ -513,14 +536,21 @@ async function saveSettings(){
   status(error?'No se pudo guardar. Intenta de nuevo.':'Guardado ✓');
 }
 
+function liveLine(x,now){
+  const L=liveState(x,now);if(!L)return '';
+  const at=new Date(L.at).toLocaleString('es-MX',{weekday:'short',hour:'2-digit',minute:'2-digit'});
+  if(L.k==='soon')return '<br><small>🕐 Empieza en '+fmtIn(L.ms)+' <span class="mu">('+at+')</span></small>';
+  if(L.k==='live')return '<br><small class="w">🔴 En juego (debería terminar en ~'+fmtIn(L.ms)+')</small>';
+  return '<br><small class="r">⏳ Ya debió terminar: marca tus picks</small>';
+}
 function render(){
   const st=computeStats(T,S,Date.now());
   const col=st.net>=0?'g':'r';
   $('sum').innerHTML=[['Tickets',st.n],['Aciertos',st.hw+' ('+pc(st.hw/st.n)+')'],['Apostado',money(st.stk)],['Cobrado',money(st.pay)],['Neto','<span class="'+col+'">'+money(st.net)+'</span>'],['ROI','<span class="'+col+'">'+pc(st.net/st.stk)+'</span>']]
     .map(a=>'<div class="card"><div class="k">'+a[0]+'</div><div class="v">'+a[1]+'</div></div>').join('');
-  const pend=T.filter(x=>x.result==='p'&&Date.now()-x.created_at>3*36e5).length;
-  $('rem').classList.toggle('hide',!pend);
-  if(pend){$('rem').innerHTML='<b>⏳ '+pend+(pend===1?' ticket pendiente':' tickets pendientes')+'</b> <small>por marcar como ganado o perdido.</small> <button class="s" id="remBtn" style="margin-left:6px">Ver</button>';$('remBtn').onclick=()=>$('list').scrollIntoView({behavior:'smooth',block:'start'})}
+  const nowMs=Date.now(),ended=T.filter(x=>{const L=liveState(x,nowMs);return L?L.k==='done':(x.result==='p'&&nowMs-x.created_at>3*36e5)}).length,lives=T.filter(x=>{const L=liveState(x,nowMs);return L&&L.k==='live'}).length;
+  $('rem').classList.toggle('hide',!(ended||lives));
+  if(ended||lives){$('rem').innerHTML=(ended?'<b>⏳ '+ended+(ended===1?' ticket ya terminó':' tickets ya terminaron')+'</b> <small>marca sus picks como ✅ o ❌.</small>':'')+(lives?(ended?'<br>':'')+'<b>🔴 '+lives+(lives===1?' ticket en juego':' tickets en juego')+'</b>':'')+' <button class="s" id="remBtn" style="margin-left:6px">Ver</button>';$('remBtn').onclick=()=>$('list').scrollIntoView({behavior:'smooth',block:'start'})}
   $('wk').textContent=money(st.spent);$('tope').value=S.tope;
   const pct=S.tope>0?Math.min(100,st.spent/S.tope*100):100;
   $('wkb').style.width=pct+'%';$('wkb').style.background=st.spent>S.tope?'var(--r)':'var(--ac)';
@@ -530,7 +560,7 @@ function render(){
   if(st.calN)$('cal').innerHTML='Esperabas <b>'+st.calExp.toFixed(1)+'</b> aciertos y salieron <b>'+st.calAct+'</b> <small>(en '+st.calN+' tickets con estimación)</small>';
   $('list').innerHTML=T.length?T.slice().reverse().map(x=>{
     const c=x.result==='w'?'g':x.result==='l'?'r':'';
-    return '<div class="row"><div style="min-width:0"><b>'+esc(x.game)+'</b> <small>'+esc(x.type)+' · '+x.legs.length+' picks'+(x.prob?' · '+x.prob+'%':'')+'</small><br><small>'+new Date(x.created_at).toLocaleDateString('es-MX')+' · '+money(x.stake)+' @ '+x.mult+'x → '+money(x.stake*x.mult)+'</small>'+
+    return '<div class="row"><div style="min-width:0"><b>'+esc(x.game)+'</b> <small>'+esc(x.type)+' · '+(x.legs.some(l=>l.r!=='p')?x.legs.filter(l=>l.r!=='p').length+'/'+x.legs.length+' cerrados':x.legs.length+(x.legs.length===1?' pick':' picks'))+(x.prob?' · '+x.prob+'%':'')+'</small><br><small>'+new Date(x.created_at).toLocaleDateString('es-MX')+' · '+money(x.stake)+' @ '+x.mult+'x → '+money(x.stake*x.mult)+'</small>'+liveLine(x,nowMs)+
     (x.legs.length?'<div style="margin-top:4px">'+x.legs.map((l,j)=>'<button class="s" style="margin:2px 2px 0 0" data-i="'+esc(x.id)+'" data-l="'+j+'" data-a="leg">'+(l.r==='w'?'✅':l.r==='l'?'❌':'⏳')+' '+esc(l.n)+'</button>').join('')+'</div>':'')+'</div><div style="text-align:right;white-space:nowrap">'+
     (x.result==='p'?'<button class="s" data-i="'+esc(x.id)+'" data-a="w">✓</button> <button class="s" data-i="'+esc(x.id)+'" data-a="l">✗</button>':'<span class="'+c+'">'+(x.result==='w'?'Ganó':'Perdió')+'</span> <button class="s" data-i="'+esc(x.id)+'" data-a="p">↺</button>')+
     ' <button class="s" data-i="'+esc(x.id)+'" data-a="x">🗑</button></div></div>'}).join(''):'<small>Sin tickets todavía.</small>';
@@ -582,12 +612,12 @@ async function addTicket(){
   const stake=+$('stake').value,mult=+$('mult').value,prob=$('prob').value===''?null:+$('prob').value;
   if(!(stake>0)||!(mult>1)){$('addMsg').textContent='Pon entrada y multiplicador válidos.';return}
   if(prob!==null&&(prob<0||prob>100)){$('addMsg').textContent='La probabilidad va de 0 a 100.';return}
-  const result=$('res').value,legs=$('legsTxt').value.split('\n').map(z=>z.trim()).filter(Boolean).slice(0,12).map(n=>({n:n.slice(0,80),r:result==='w'?'w':'p'}));
+  const result=$('res').value,gt=$('gtime').value?new Date($('gtime').value).getTime():0,legs=$('legsTxt').value.split('\n').map(z=>z.trim()).filter(Boolean).slice(0,12).map(n=>gt>0?{n:n.slice(0,80),r:result==='w'?'w':'p',t:gt}:{n:n.slice(0,80),r:result==='w'?'w':'p'});
   $('add').disabled=true;
   const {data,error}=await sb.from('tickets').insert({game:($('game').value||'Ticket').trim().slice(0,80),type:$('type').value,stake,mult,prob,result,legs}).select().single();
   $('add').disabled=false;
   if(error){$('addMsg').textContent='No se pudo guardar. Intenta de nuevo.';return}
-  T.push(mapTicket(data));$('legsTxt').value='';$('prob').value='';$('mult').value='';$('res').value='p';$('addMsg').textContent='Guardado ✓';render();
+  T.push(mapTicket(data));$('gtime').value='';$('legsTxt').value='';$('prob').value='';$('mult').value='';$('res').value='p';$('addMsg').textContent='Guardado ✓';render();
 }
 
 async function listAction(e){
@@ -643,7 +673,7 @@ async function readImages(files){
     const T_=await loadOcr();let found=[],drafts=[];
     for(let i=0;i<files.length;i++){
       m.textContent='Leyendo captura '+(i+1)+' de '+files.length+'…';
-      let best=null,bestScore=-1,lastLs=[],resSeen=null;
+      let best=null,bestScore=-1,lastLs=[],resSeen=null,startSeen=null;
       for(const v of [[true,2200],[false,1800],[false,1200]]){
         const c=await prepImage(files[i],v[0],v[1]);
         const r=await T_.recognize(c,'eng');
@@ -651,9 +681,10 @@ async function readImages(files){
         lastLs=ls;
         const dr=parseAny(ls);
         if(dr&&dr.result&&!resSeen)resSeen=dr.result;
+        if(dr&&dr.start&&!startSeen)startSeen=dr.start;
         if(dr){const sc=scoreParsed(dr);if(sc>bestScore){bestScore=sc;best=dr}if(dr.stake&&dr.mult&&dr.legs.length&&dr.legs.every(l=>!/[“”‘’~@|]/.test(l)))break}
       }
-      if(best){if(!best.result&&resSeen)best.result=resSeen;drafts.push(best);continue}
+      if(best){if(!best.result&&resSeen)best.result=resSeen;if(startSeen)best.start=startSeen;drafts.push(best);continue}
       const ls=lastLs;
       const t=ocrClean(ls);if(t)found.push(t);
     }
@@ -665,11 +696,12 @@ async function readImages(files){
       $('game').value=d.game||'';
       $('prob').value='';
       $('res').value=d.result||'p';
+      {const z=n=>String(n).padStart(2,'0'),q=d.start?new Date(d.start):null;$('gtime').value=q?q.getFullYear()+'-'+z(q.getMonth()+1)+'-'+z(q.getDate())+'T'+z(q.getHours())+':'+z(q.getMinutes()):''}
       $('legsTxt').value=d.legs.join('\n');
       $('cIn').value=d.legs.join('\n')+(d.mult?'\nTotal '+d.mult+'x':'');
       if(d.legMult||d.mult)runCalc();
       if(false)$('cOut').innerHTML='<div class="card" style="background:var(--bg)"><div class="k">Leí tu ticket'+(d.game?' ('+esc(d.game)+')':'')+'</div><div class="v">Momio '+d.mult+'x</div><div class="msg">Entrada '+(d.stake?money(d.stake):'?')+(d.payout?' · pago '+money(d.payout):'')+' · '+d.legs.length+' picks<br>Para empatar necesitas acertar al menos <b>'+pc(1/d.mult)+'</b> de las veces con tickets como este.</div></div>';
-      m.className='msg';m.textContent=d.mult?'Listo: pasé entrada, momio y picks a "Guardar ticket"'+(d.result?' y marqué el resultado como '+(d.result==='w'?'GANÓ':'PERDIÓ'):'')+'. Revisa que estén bien y toca Guardar.':'Pasé los picks a "Guardar ticket", pero esta captura no trae entrada ni momio: escríbelos tú.';
+      m.className='msg';m.textContent=d.mult?'Listo: pasé entrada, momio y picks a "Guardar ticket"'+(d.result?' y marqué el resultado como '+(d.result==='w'?'GANÓ':'PERDIÓ'):'')+'. Revisa que estén bien'+(d.start?' (incluida la hora del partido)':'')+' y toca Guardar.':'Pasé los picks a "Guardar ticket", pero esta captura no trae entrada ni momio: escríbelos tú.';
       if(drafts.length>1)m.textContent+=' (Subiste varias capturas: solo usé la primera, sube las otras una por una.)';
       $('game').scrollIntoView({behavior:'smooth',block:'center'});
       return;
