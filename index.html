@@ -772,8 +772,10 @@ function prepImage(file,bin,w){
     img.src=url;
   });
 }
+let dbgRaw='';
+function showDbg(bad){let e=$('ocrDbg');if(!e){e=document.createElement('textarea');e.id='ocrDbg';e.readOnly=true;e.style.cssText='width:100%;height:120px;margin-top:8px;font-size:12px';$('ocrMsg').after(e)}e.style.display=bad?'block':'none';e.value=bad?'TEXTO QUE LEYÓ (mándaselo a Alan):\n'+dbgRaw:''}
 async function readImages(files){
-  const m=$('ocrMsg');
+  const m=$('ocrMsg');showDbg(false);
   if(!files.length)return;
   m.className='msg';m.textContent='Cargando lector de imágenes (la primera vez tarda unos segundos)…';
   $('imgBtn').disabled=true;
@@ -781,12 +783,12 @@ async function readImages(files){
     const T_=await loadOcr();let found=[],drafts=[];
     for(let i=0;i<files.length;i++){
       m.textContent='Leyendo captura '+(i+1)+' de '+files.length+'…';
-      let best=null,bestScore=-1,lastLs=[],resSeen=null,startSeen=null;
+      let best=null,bestScore=-1,lastLs=[],resSeen=null,startSeen=null;if(!i)dbgRaw='';
       for(const v of [[true,2200],[false,1800],[false,1200]]){
         const c=await prepImage(files[i],v[0],v[1]);
         const r=await T_.recognize(c,'eng');
         const ls=(r.data.lines&&r.data.lines.length)?r.data.lines.map(z=>({t:z.text,y:(z.bbox.y0+z.bbox.y1)/2})):String(r.data.text||'').split('\n').map((z,k)=>({t:z,y:k}));
-        lastLs=ls;
+        lastLs=ls;if(!i)dbgRaw+='[v'+v[1]+'] '+ls.map(z=>String(z.t).trim()).filter(Boolean).join(' / ')+'\n\n';
         const dr=parseAny(ls);
         if(dr&&dr.result&&!resSeen)resSeen=dr.result;
         if(dr&&dr.start&&(!startSeen||dr.start>startSeen))startSeen=dr.start;
@@ -810,11 +812,12 @@ async function readImages(files){
       if(d.legMult||d.mult)runCalc();
       if(false)$('cOut').innerHTML='<div class="card" style="background:var(--bg)"><div class="k">Leí tu ticket'+(d.game?' ('+esc(d.game)+')':'')+'</div><div class="v">Momio '+d.mult+'x</div><div class="msg">Entrada '+(d.stake?money(d.stake):'?')+(d.payout?' · pago '+money(d.payout):'')+' · '+d.legs.length+' picks<br>Para empatar necesitas acertar al menos <b>'+pc(1/d.mult)+'</b> de las veces con tickets como este.</div></div>';
       m.className='msg';m.textContent=d.mult?'Listo: pasé entrada, momio y picks a "Guardar ticket"'+(d.result?' y marqué el resultado como '+(d.result==='w'?'GANÓ':'PERDIÓ'):'')+'. Revisa que estén bien'+(d.start?' (incluida la hora del partido)':'')+' y toca Guardar.':'Pasé los picks a "Guardar ticket", pero esta captura no trae entrada ni momio: escríbelos tú.';
+      if(!(d.stake&&d.legs.length))showDbg(true);
       if(drafts.length>1)m.textContent+=' (Subiste varias capturas: solo usé la primera, sube las otras una por una.)';
       $('game').scrollIntoView({behavior:'smooth',block:'center'});
       return;
     }
-    if(!found.length){m.className='msg w';m.textContent='No pude leer multiplicadores en la imagen. Prueba con una captura más nítida o escribe los picks a mano.';return}
+    if(!found.length){showDbg(true);m.className='msg w';m.textContent='No pude leer multiplicadores en la imagen. Prueba con una captura más nítida o escribe los picks a mano.';return}
     const box=$('cIn');box.value=(box.value.trim()?box.value.trim()+'\n':'')+found.join('\n');
     m.className='msg';m.textContent='Listo. Revisa que los nombres y multiplicadores estén bien (puedes corregir el texto) y vuelve a tocar Calcular si cambias algo.';
     runCalc();
