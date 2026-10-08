@@ -98,7 +98,7 @@ ul.al{margin:6px 0 0;padding-left:18px}
       <input id="imgIn" type="file" accept="image/*" multiple hidden>
     </div>
     <div id="ocrMsg" class="msg"></div>
-    <small>La captura se lee en tu propio celular: no se sube ni se guarda en ningún lado. Revisa siempre lo que leyó antes de calcular.</small>
+    <small>La captura se lee en tu propio dispositivo: no se sube ni se guarda en ningún lado. En computadora también puedes pegarla con Ctrl+V o arrastrarla aquí. Revisa siempre lo que leyó antes de calcular.</small>
     <div id="cOut" style="margin-top:10px"></div>
   </div>
 
@@ -184,7 +184,7 @@ function gameFrom(text){
   f.sort((a,b)=>a[0]-b[0]);
   return f.length>=4?'Parlay varios juegos':f.length>=2?f[0][1]+' vs '+f[1][1]:'';
 }
-const PLAYER=/(?:([A-Za-z|!1]?)\s?\.\s?)?([A-Za-z'’\-]{3,})\s+[A-Za-z]{2,3}\b\s*[|!l]?\s*(\d+(?:\.\d+)?)\s*\+/;
+const PLAYER=/(?:([A-Za-z|!1]?)\s?\.\s?)?([A-Za-z'’\-]{3,})(…|\.{2,})?\s+[A-Za-z]{2,3}\b\s*[|!l]?\s*(\d+(?:\.\d+)?)\s*\+/;
 const MONEY=/(?:\$|[A-Z]{3}\s?)\s*(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s*(?:MXN|USD|HNL)\b/;
 const toNum=s=>parseFloat(String(s).replace(/,/g,''));
 const amDec=x=>{const n=parseFloat(String(x));return n>0?1+n/100:1+100/Math.abs(n)};
@@ -202,11 +202,11 @@ function dCat(t){
   const k=t.toUpperCase().replace(/[^A-ZÁÉÍÓÚÑ]/g,'');
   if(k.length<4)return null;
   if(/DRAFTEA|ENTRADA|GANANCIA|MOMIO|POTENCIAL|BOOSTER/.test(k))return null;
-  const R=[[/EMPATA/,'Gana o empata'],[/AMBAS|MITAD/,'Anota en ambas mitades'],[/LANZAM/,'Lanzamientos'],[/SPREAD/,'Spread'],[/PUNTOS/,'Puntos totales'],[/CARRERAST|CARRERASTOT|CARRERAS/,'Carreras totales'],[/OLES/,'Goles totales'],[/RECEP/,'yds de recepción'],[/YDSDECARRERA|YDSCARRERA/,'yds de carrera'],[/YDSDEPASE/,'yds de pase'],[/PASESDE|PASESTD/,'TD de pase'],[/TDSANOT|ANOTADOS/,'TD anotado'],[/^[A-Z]{0,3}GANA[A-Z]{0,2}$/,'Gana']];
+  const R=[[/EMPATA/,'Gana o empata'],[/AMBAS|MITAD/,'Anota en ambas mitades'],[/LANZAM/,'Lanzamientos'],[/SPREAD/,'Spread'],[/PUNTOS/,'Puntos totales'],[/CARRERAST|CARRERASTOT|CARRERAS/,'Carreras totales'],[/OLES/,'Goles totales'],[/YDS.*RECEP|RECEP.*YDS/,'yds de recepción'],[/^RECEP/,'Recepciones'],[/YDSDECARRERA|YDSCARRERA/,'yds de carrera'],[/YDSDEPASE/,'yds de pase'],[/PASESDE|PASESTD/,'TD de pase'],[/TDSANOT|ANOTADOS/,'TD anotado'],[/^[A-Z]{0,3}GANA[A-Z]{0,2}$/,'Gana']];
   for(const r of R)if(r[0].test(k))return r[1];
   const letters=t.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ]/g,'');
   const up=letters.replace(/[^A-ZÁÉÍÓÚÑ]/g,'');
-  if(letters.length>=6&&up.length/letters.length>=0.8){const w=t.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ ]/g,' ').split(' ').filter(x=>x.length>2).join(' ').toLowerCase();return w.charAt(0).toUpperCase()+w.slice(1)}
+  if(letters.length>=6&&up.length/letters.length>=0.8){const w=t.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ ]/g,' ').split(' ').filter(x=>x.length>2&&x===x.toUpperCase()).join(' ').toLowerCase();return w.charAt(0).toUpperCase()+w.slice(1)}
   return null;
 }
 const ACC={Espana:'España',Mexico:'México',Turquia:'Turquía',Belgica:'Bélgica',Panama:'Panamá',Peru:'Perú',Paraguay:'Paraguay',Japon:'Japón',Canada:'Canadá'};
@@ -221,7 +221,7 @@ function parseDraftea(lines){
   const L=normL(lines);
   const all=L.map(o=>o.t).join(' ');
   if(!/DRAFTEA|ENTRADA\s*CREADA|MI\s*ENTRADA/i.test(all))return null;
-  const MK=/^\W*(?:Hoy|Ma[nñ]ana)\b|\b[0-9OolI]{1,2}h:\d{1,2}m|Creado/i;
+  const MK=/^\W*(?:Hoy|Ma[nñ]ana)\b|^\W*\d{1,2}\s*\/\s*[A-Za-z]{3}\b|\b[0-9OolI]{1,2}h:\d{1,2}m|Creado/i;
   let hEnd=L.findIndex(o=>MK.test(o.t));if(hEnd<0)hEnd=L.length;
   const head=L.slice(0,hEnd).map(o=>o.t).join(' ');
   const amts=[...head.matchAll(/\$\s*(\d[\d,]*(?:\.\d+)?)/g)].map(m=>toNum(m[1]));
@@ -234,6 +234,8 @@ function parseDraftea(lines){
   let mult=ms.length?Math.max(...ms):(stake&&payout&&payout>stake?Math.round(payout/stake*100)/100:null);
   if(!(mult>1))return null;
   const body=L.slice(hEnd),legs=[];
+  const liveSp=[...head.matchAll(/SPREAD\s+([A-Z]{2,4})\s*([+-]\s?\d+(?:\.\d)?)/g)];
+  liveSp.forEach(z=>legs.push('Spread '+z[1]+' '+z[2].replace(/\s/g,'')));
   const fmt=v=>String(v).replace(/\.0+$/,'');
   let cur=null,blocks=0,teams=[],tmCount=0;
   const MAXV={'Goles totales':7.5,'Carreras totales':12.5,'Puntos totales':99};
@@ -247,7 +249,8 @@ function parseDraftea(lines){
       continue;
     }
     let m;
-    if((m=o.t.match(PLAYER))){legs.push((/[A-Za-z]/.test(m[1]||'')?m[1].toUpperCase()+'. ':'')+m[2].replace(/^[-'’]+/,'')+' '+cur+' '+fmt(m[3])+'+');cur=null;continue}
+    if((m=o.t.match(PLAYER))){legs.push((/[A-Za-z]/.test(m[1]||'')?m[1].toUpperCase()+'. ':'')+m[2].replace(/^[-'’]+/,'')+(m[3]?'…':'')+' '+cur+' '+fmt(m[4])+'+');cur=null;continue}
+    if(/^Total/i.test(cur)&&!MAXV[cur]){const nm=o.t.match(/(\d+(?:\.\d+)?)\s*$/);if(nm&&parseFloat(nm[1])<=250){legs.push(cur+' '+nm[1]+' (revisa si es alta o baja)');cur=null}continue}
     if(MAXV[cur]){
       const nm=o.t.match(/(\d[\d.,]*)\s*$/);
       const v=nm?fixTotal(nm[1].replace(',','.'),MAXV[cur]):null;
@@ -259,43 +262,130 @@ function parseDraftea(lines){
       if(tm&&nm){let n=nm[1];if(n.indexOf('.')<0&&n.length>=2&&n.slice(-1)==='5')n=n.slice(0,-1)+'.5';legs.push('Spread '+tm[1]+' '+(/-/.test(o.t.slice(o.t.indexOf(tm[1])+tm[1].length))?'-':'+')+n);cur=null}
       continue;
     }
+    if((m=o.t.match(/(?:([A-Za-z|!1]?)\s?\.\s?)?([A-Za-z'’\-]{3,})(…|\.{2,})?\s+[A-Za-z]{2,3}\b[^\d\n]{0,8}(\d+(?:\.\d+)?)\s*$/))){legs.push((/[A-Za-z]/.test(m[1]||'')?m[1].toUpperCase()+'. ':'')+m[2]+(m[3]?'…':'')+' '+cur+' '+m[4]+' (revisa si es alta o baja)');cur=null;continue}
     let val=cleanTeam(o.t).replace(/\bSi\b/,'Sí').replace(/[()@|~=]+/g,' ').replace(/\s+/g,' ').trim();
     val=val.replace(/(\s[^A-Za-z0-9]?[a-z]{1,2})+$/,'').trim();
     if(val.length>=3&&/[A-Za-zÁÉÍÓÚÑ]{2}/.test(val)){legs.push(cur+': '+val);cur=null}
   }
-  const game=blocks>1?'Parlay ('+blocks+' juegos)':(teams.length>=2?teams.slice(0,2).join(' vs '):'');
+  const nb=blocks+(liveSp.length?1:0),game=nb>1?'Parlay ('+nb+' juegos)':(teams.length>=2?teams.slice(0,2).join(' vs '):'');
   return{stake,mult,payout,game:game||gameFrom(all),legs};
 }
 function parseSlip(lines){
   const L=normL(lines);
   const all=L.map(o=>o.t).join(' ');
-  if(!(/Monto/i.test(all)&&/Momio/i.test(all)&&/Ganancia/i.test(all)))return null;
-  const fi=L.findIndex(o=>/Monto|Momio|Ganancia/i.test(o.t));
-  const body=L.slice(0,fi),foot=L.slice(fi);
-  const ft=foot.map(o=>o.t).join(' ');
-  const pm=[...ft.matchAll(/\$\s*(\d[\d,]*\.\d{2})/g)].pop();
-  let payout=pm?toNum(pm[1]):null;
-  const mm=ft.match(/(\d{1,3}\.\d{1,2})\s*[xX×]/);
-  let mult=mm?parseFloat(mm[1]):null;
-  const vt=foot.filter(o=>!/Monto|Momio|Ganancia/i.test(o.t)).map(o=>o.t.replace(/\$\s*\d[\d,]*\.\d{2}/g,' ').replace(/\d{1,3}\.\d{1,2}\s*[xX×]/g,' ')).join(' ');
-  const tk=[...vt.matchAll(/\d+/g)].map(m=>m[0]).filter(x=>x.length>=2);
-  let stake=/\$\s*(\d+)/.test(vt)?toNum(vt.match(/\$\s*(\d+)/)[1]):(tk.length?toNum(tk[0]):null);
-  if(mult&&payout&&(!stake||Math.abs(stake*mult-payout)>0.03*payout))stake=Math.round(payout/mult);
-  if(!mult&&stake&&payout&&payout>stake)mult=Math.round(payout/stake*100)/100;
-  if(!(mult>1))return null;
-  const legs=[],pairs=[];let cur=null;
-  const PL=/([A-Z][A-Za-z'’\-.]+(?:\s+[A-Z][A-Za-z'’\-.]+)?)\s+([A-Z]{2,4})\b[^\d\n]{0,6}(\d+(?:\.\d+)?)\s*\+/;
+  const hasFoot=/Monto/i.test(all)&&/Momio/i.test(all)&&/Ganancia/i.test(all);
+  let stake=null,mult=null,payout=null,body=L;
+  if(hasFoot){
+    const fi=L.findIndex(o=>/Monto|Momio|Ganancia/i.test(o.t));
+    body=L.slice(0,fi);
+    const foot=L.slice(fi),ft=foot.map(o=>o.t).join(' ');
+    const pm=[...ft.matchAll(/\$\s*(\d[\d,]*\.\d{2})/g)].pop();
+    payout=pm?toNum(pm[1]):null;
+    const mm=ft.match(/(\d{1,3}\.\d{1,2})\s*[xX×]/);
+    mult=mm?parseFloat(mm[1]):null;
+    const vt=foot.filter(o=>!/Monto|Momio|Ganancia/i.test(o.t)).map(o=>o.t.replace(/\$\s*\d[\d,]*\.\d{2}/g,' ').replace(/\d{1,3}\.\d{1,2}\s*[xX×]/g,' ')).join(' ');
+    const tk=[...vt.matchAll(/\d+/g)].map(m=>m[0]).filter(x=>x.length>=2);
+    stake=/\$\s*(\d+)/.test(vt)?toNum(vt.match(/\$\s*(\d+)/)[1]):(tk.length?toNum(tk[0]):null);
+    if(mult&&payout&&(!stake||Math.abs(stake*mult-payout)>0.03*payout)){if(stake&&payout/stake>1&&payout/stake<200&&/\$\s*\d/.test(vt))mult=Math.round(payout/stake*100)/100;else stake=Math.round(payout/mult);}
+    if(!mult&&stake&&payout&&payout>stake)mult=Math.round(payout/stake*100)/100;
+    if(!(mult>1))return null;
+  }
+  const legs=[],pairs=[],teams=[];let cur=null;
+  const NM="[A-Z][A-Za-z'’\\-.]*(?:…)?";
+  const PL=new RegExp('('+NM+'(?:\\s+'+NM+'){0,2}?)\\s+([A-Z0-9]{2,4}|[A-Z][a-z]{1,2}|[a-z]{2,3}(?=\\s*[|!l]\\s*\\d))\\b[^\\d\\n]{0,6}(\\d+(?:\\.\\d+)?)\\s*\\+');
+  const SP=/([A-Za-z][A-Za-z.]{2,}(?: [A-Za-z.]+)?)\s*[|!lI]*\s*([+-]\s?\d+(?:\.\d)?)\s*$/;
   for(const o of body){
+    if(/^\W*Final\b|^\W*Creado/i.test(o.t))break;
     const vs=o.t.match(/\b([A-Z]{2,4})\s*vs\s*([A-Z]{2,4})\b/);
     if(vs){const k=vs[1]+' vs '+vs[2];if(pairs.indexOf(k)<0)pairs.push(k);continue}
     const c=dCat(o.t);
     if(c){cur=c;continue}
+    if(cur==='Spread'){const sm=o.t.match(SP);if(sm){legs.push('Spread '+sm[1].trim().replace(/^(?:[a-z]{1,2}|[xX])\s+/,'')+' '+sm[2].replace(/\s/g,''));cur=null}continue}
+    const ou=o.t.match(/(?:^|\s)(Mas|Más|Menos)\s*(?:de\s*)?(\d+(?:\.\d+)?)\s*$/i);
+    if(cur&&ou){legs.push(cur+' '+(/^m[aá]s/i.test(ou[1])?'Más':'Menos')+' '+ou[2]);cur=null;continue}
     const m=o.t.match(PL);
-    if(m){legs.push(m[1].trim()+' '+(cur||'')+' '+m[3].replace(/\.0+$/,'')+'+');cur=null}
+    if(m&&(cur||hasFoot)){
+      let nm=m[1].replace(/^(?:[xX][xX]?|[a-z]{1,2})\s+/,'').replace(/^[A-Z]-\s*/,'').replace(/^[A-Z]\s+(?=[A-Z][a-z])/,'').replace(/\bIll\b/,'III').replace(/\.{2,}$/,'…').trim();
+      legs.push(nm+' '+(cur||'')+' '+m[3].replace(/\.0+$/,'')+'+');cur=null;continue;
+    }
+    if(!cur&&!legs.length&&!pairs.length&&teams.length<2&&!/\d/.test(o.t)){const tn=cleanTeam(o.t);if(tn.length>=4&&/^[A-Z]/.test(tn))teams.push(tn)}
   }
   if(!legs.length)return null;
-  const game=pairs.length>1?'Parlay ('+pairs.length+' juegos)':(pairs[0]||'');
+  const game=pairs.length>1?'Parlay ('+pairs.length+' juegos)':(pairs[0]||(teams.length===2?teams.join(' vs '):''));
   return{stake,mult,payout,game,legs};
+}
+function strip(s){return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
+function statOf(m){const k=strip(m).toLowerCase();
+  const R=[[/strikeouts?/,'Strikeouts'],[/hits totales|hits del/,'Hits'],[/bases totales/,'Bases totales'],[/home runs?|jonrones/,'Home runs'],[/carreras impulsadas|rbi/,'Carreras impulsadas'],
+  [/yardas por tierra|yardas de carrera|yardas corridas/,'yds de carrera'],[/yardas de recep/,'yds de recepción'],[/yardas de pase/,'yds de pase'],[/touchdowns?/,'Touchdowns'],
+  [/recepciones/,'Recepciones'],[/pases completos/,'Pases completos'],[/goles de campo/,'Goles de campo'],[/goles/,'Goles'],[/puntos/,'Puntos'],[/rebotes/,'Rebotes'],[/asistencias/,'Asistencias'],[/triples/,'Triples']];
+  for(const r of R)if(r[0].test(k))return r[1];return ''}
+const tidy=x=>String(x).replace(/^[^A-Za-z]+/,'').replace(/^(?:[a-z]{1,3}\s+)+/,'').trim();
+function mkLeg(mk,sel){
+  const M=mk.replace(/\(incl[^)]*\)?/gi,'').replace(/Pago Anticipado/ig,'').replace(/\s+/g,' ').trim();
+  const ou=sel.match(/(Mas|Menos)\s*de\s*([\d.]+)/i),nn=sel.match(/([\d.]+)\s*\+/);
+  const st=ou?(/^mas/i.test(ou[1])?'Más':'Menos')+' de '+ou[2]:(nn?nn[1].replace(/\.0$/,'')+'+':'');
+  if(/^handicap/i.test(M)){const h=sel.match(/^\W*(?:[a-z]{1,3}\s+)?(.+?)\s*\(([+-]\d+(?:\.\d)?)\)\s*$/);return h?tidy(h[1])+' '+h[2]+' (hándicap)':null}
+  if(/^ganador/i.test(M))return 'Gana: '+tidy(sel);
+  if(!st)return null;
+  const pl=M.match(/\(\s*([^()]+?)\s*\(([A-Z]{2,4})\)\s*\)/);
+  if(pl){const sx=statOf(M);return pl[1].trim()+(sx?' '+sx:'')+' '+st}
+  if(/^totales?$/i.test(M))return 'Total '+st;
+  let t=M.match(/^(.+?)\s+Mas de\/Menos de/i);if(t)return tidy(t[1])+' '+st;
+  t=M.match(/^(.+?)\s+Total\s+(.+)$/i);if(t)return tidy(t[1])+' '+(statOf(t[2])||t[2])+' '+st;
+  return M+' '+st;
+}
+function parseMarkets(lines){
+  const L0=normL(lines).map(o=>({t:strip(o.t),y:o.y}));
+  const s0=L0.findIndex(o=>/^\W*(?:[A-Za-z&@©]{1,2}\s+)?(SGP|Crear\s*Apuesta)\b(?!\s*[vV]\b)/i.test(o.t));
+  if(s0<0)return null;
+  const L=L0.slice(s0);
+  const STOP=/Momios?\b|Apuesta\s*total|Limpiar|Realizar|Ganancia\s*Total|Ganar\s*:|Cuota\s*total|Valor\s*total/i;
+  let mult=null,game='',hi=0;
+  for(let i=0;i<Math.min(L.length,6);i++){
+    const t=L[i].t;
+    const a=t.match(/(?:^|\s)([+-]\d{3,4})\b/);if(a&&mult===null)mult=amDec(a[1]);
+    if(/\s(@|vs\.?)\s/i.test(t)&&!game){hi=i;
+      const d=t.match(/\s(\d\.\d{2})\s*$/);if(d&&mult===null)mult=parseFloat(d[1]);
+      let g=t,pv;do{pv=g;g=g.replace(/\s+(?:[+-]?\d[\d.:+-]*|GANADO|PERDIDO|x|ke|\W+)$/i,'')}while(g!==pv);
+      g=g.replace(/(\b[A-Za-z]{4,})\s+[A-Z]{1,2}$/,'$1').replace(/^.*?(?=\b[A-Z]{2,3}\s+[A-Z][a-z]|\b[A-Z][a-z]{2,})/,'').replace(/\s@\s/i,' vs ').replace(/\svs\.\s/i,' vs ');
+      game=g.trim();
+    }
+  }
+  const MARKET=/handicap|totales|\btotal\b|ganador|por jugador|yardas|touchdowns|strikeouts|hits|bases|home runs|goles|mas de\/menos de|al menos|resultado/i;
+  const selOU=/^\W*(?:[a-z]{1,2}\s+)?(Mas|Menos)\s*de\s*(\d+(?:\.\d+)?)\s*$/i,selN=/^\W*(?:[a-z]{1,2}\s+)?(\d+(?:\.\d+)?)\s*\+\s*$/;
+  const legs=[];let buf=[];
+  for(let i=hi+1;i<L.length;i++){
+    const t=L[i].t;if(STOP.test(t))break;
+    if(buf.length){
+      let sel=null;
+      if(selOU.test(t)||selN.test(t))sel=t;
+      else if(/^handicap/i.test(buf[0])&&/\([+-]\d+(?:\.\d)?\)\s*$/.test(t)&&!/incl/i.test(t))sel=t;
+      else if(/^ganador/i.test(buf[0])&&!/incl|anticipado/i.test(t)&&/[A-Za-z]{3}/.test(t))sel=t;
+      if(sel){const lg=mkLeg(buf.join(' '),sel);if(lg)legs.push(lg);buf=[];continue}
+    }
+    const open=buf.length?(buf.join(' ').match(/\(/g)||[]).length-(buf.join(' ').match(/\)/g)||[]).length:0;
+    if(MARKET.test(t)||(buf.length&&(/^[a-z(]/.test(t)||open>0)))buf.push(t.replace(/\s+[xX~=vV5-]{1,2}\s*$/,'').replace(/\s+\d\s*$/,''));
+  }
+  if(!legs.length)return null;
+  const money=r=>{const m=L.map(o=>o.t.match(r)).find(Boolean);return m?toNum(m[1]):null};
+  const stake=money(/Apuesta\s*total\D{0,6}(\d[\d,]*\.\d{2})/i),payout=money(/Ganancia\s*Total\D{0,6}(\d[\d,]*\.\d{2})/i);
+  if(stake&&payout&&payout>stake)mult=Math.round(payout/stake*1000)/1000;
+  return{stake,mult,payout,game,legs,legMult:false};
+}
+function betvipLegs(lines){
+  const L=normL(lines),all=L.map(o=>strip(o.t)).join(' ');
+  if(!/Estimado a ganar/i.test(all)||!/Monto de la apuesta/i.test(all))return null;
+  const mi=L.findIndex(o=>/Monto de la apuesta/i.test(o.t));
+  const body=L.slice(0,mi).map(o=>strip(o.t)).join(' ');
+  const legs=[];
+  for(const m of body.matchAll(/(?:Jugadores?:\s*)?([A-Za-z ]+?)\s+del Jugador:?\s*(.+?)\s+[-–]\s*(Mas|Menos) de\s*([\d.]+)/gi))
+    legs.push(m[2].replace(/^[\d.]+\s+/,'').trim()+' '+m[1].replace(/^Jugadores?:?\s*/i,'').trim()+' '+(/^mas/i.test(m[3])?'Más':'Menos')+' de '+m[4]);
+  if(!legs.length)return null;
+  let game='';const gi=L.findIndex(o=>/\svs\.?\s/i.test(o.t));
+  if(gi>=0){let g=strip(L[gi].t).replace(/\s*\d{2}[./]\d{2}[./]\d{2,4}.*$/,'').replace(/^.*?(?=\b[A-Z][a-z]{2,})/,'').trim();
+    const nx=L[gi+1]&&strip(L[gi+1].t);if(nx&&/^[A-Z][A-Za-z. ]{2,20}$/.test(nx)&&!/Jugadores|Monto/i.test(nx))g+=' '+nx;game=g.replace(/\svs\.\s/i,' vs ')}
+  return{legs,game};
 }
 function parseCuota(lines){
   const L=normL(lines);
@@ -405,6 +495,9 @@ function scoreParsed(d){
 }
 function detectResult(lines){
   const t=(lines||[]).map(o=>o.t).join(' \n ');
+  const gU=/\bGANADO\b/.test(t),pU=/\bPERDIDO\b/.test(t);
+  if(gU&&!pU)return 'w';
+  if(pU&&!gU)return 'l';
   const lost=/\bPERDID[OA]S?\b|\bLost\b|\bLoss\b|\bPerdi[oó]\b/i.test(t);
   const won=/\bGANAD[OA]S?\b|\bWin\b|\bWon\b/i.test(t);
   if(lost&&!won)return 'l';
@@ -415,8 +508,16 @@ function parseAny(lines,now){const r=parseAny0(lines);if(r){r.result=detectResul
 function parseAny0(lines){
   const d=parseDraftea(lines);if(d)return d;
   const c=parseCuota(lines);if(c&&c.legs.length)return c;
-  const sl=parseSlip(lines);if(sl)return sl;
-  return parseHouse(lines)||c||parseSobre(lines);
+  const sl=parseSlip(lines);if(sl&&sl.mult)return sl;
+  const h=parseHouse(lines),mk=parseMarkets(lines),bv=h?betvipLegs(lines):null;
+  if(bv){h.legs=bv.legs;h.legMult=false;if(bv.game)h.game=bv.game;return h}
+  if(mk&&(!h||!(h.legMult&&h.legs.length>=mk.legs.length))){
+    if(!h)return mk;
+    return{stake:h.stake||mk.stake,mult:h.mult||mk.mult,payout:h.payout||mk.payout,game:mk.game||h.game,legs:mk.legs,legMult:false};
+  }
+  if(h&&h.legs.length)return h;
+  if(sl)return sl;
+  return h||c||parseSobre(lines);
 }
 function parseSobre(lines){
   const L=normL(lines),legs=[];
@@ -496,11 +597,18 @@ function parseStart(lines,now){
   const t=(lines||[]).map(o=>String(o.t||'')).join(' \n ').replace(/ñ/gi,'n');
   const out=[],T='\\(?\\s*(\\d{1,2})\\s*:\\s*(\\d{2})\\s*(am|pm)?\\)?';
   let m,r;
-  const rel=new RegExp('\\b(Hoy|Manana)\\b\\s*[\\-•·,]?\\s*'+T,'gi');
+  const rel=new RegExp('\\b(Hoy|Ma[a-z]{1,3}ana)\\b\\s*[\\-•·,]?\\s*'+T,'gi');
   while((m=rel.exec(t))){const hm=hmOf(m[2],m[3],m[4]);if(!hm)continue;const d=new Date(now);d.setHours(hm[0],hm[1],0,0);if(/^m/i.test(m[1]))d.setDate(d.getDate()+1);out.push(d.getTime())}
   const ab='(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)';
   const dm=new RegExp('(\\d{1,2})\\s*(?:/|de|\\s)\\s*'+ab+'[a-z]*\\.?\\s*[\\-•·,(]*\\s*'+T,'gi');
   while((m=dm.exec(t))){const hm=hmOf(m[3],m[4],m[5]);if(!hm)continue;const d=new Date(now);d.setMonth(MES[m[2].toLowerCase()],+m[1]);d.setHours(hm[0],hm[1],0,0);if(d.getTime()<now-30*864e5)d.setFullYear(d.getFullYear()+1);out.push(d.getTime())}
+  const ok=ms=>ms>now-3*864e5&&ms<now+60*864e5;
+  const nm=new RegExp('(?<![\\d.])(\\d{1,2})\\s*/\\s*(\\d{1,2})(?:\\s*/\\s*(\\d{2,4}))?\\s*[•·.*+\\-]?\\s*'+T,'g');
+  while((m=nm.exec(t))){const hm=hmOf(m[4],m[5],m[6]);if(!hm)continue;const dd=+m[1],mo=+m[2];if(dd<1||dd>31||mo<1||mo>12)continue;const d=new Date(now);d.setMonth(mo-1,dd);if(m[3]){let y=+m[3];if(y<100)y+=2000;d.setFullYear(y)}d.setHours(hm[0],hm[1],0,0);if(!m[3]&&d.getTime()<now-30*864e5)d.setFullYear(d.getFullYear()+1);if(ok(d.getTime()))out.push(d.getTime())}
+  const dt=new RegExp('(?<![\\d.])(\\d{1,2})\\.(\\d{1,2})\\.(\\d{2,4})\\s*[•·.*+\\-]?\\s*'+T,'g');
+  while((m=dt.exec(t))){const hm=hmOf(m[4],m[5],m[6]);if(!hm)continue;const dd=+m[1],mo=+m[2];if(dd<1||dd>31||mo<1||mo>12)continue;let y=+m[3];if(y<100)y+=2000;const d=new Date(y,mo-1,dd,hm[0],hm[1],0,0);if(ok(d.getTime()))out.push(d.getTime())}
+  const cd=/([0-9OolI]{1,2})\s*h\s*:\s*(\d{1,2})\s*m\b/g;
+  while((m=cd.exec(t))){const hh=+String(m[1]).replace(/[Oo]/g,'0').replace(/[lI]/g,'1');if(hh<48)out.push(now+(hh*60+ +m[2])*6e4)}
   return out.length?Math.max(...out):null;
 }
 const GAME_MS=4*36e5;
@@ -645,7 +753,7 @@ function prepImage(file,bin,w){
   return new Promise((res,rej)=>{
     const img=new Image(),url=URL.createObjectURL(file);
     img.onload=()=>{
-      const sc=Math.min(3,Math.max(1,(w||2200)/img.width)),c=document.createElement('canvas');
+      const rw=(w||2200)/img.width,sc=img.width>(w||2200)*1.4?rw:Math.min(3,Math.max(1,rw)),c=document.createElement('canvas');
       c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
       const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(img,0,0,c.width,c.height);
       const d=x.getImageData(0,0,c.width,c.height),a=d.data;let sum=0;
@@ -681,7 +789,7 @@ async function readImages(files){
         lastLs=ls;
         const dr=parseAny(ls);
         if(dr&&dr.result&&!resSeen)resSeen=dr.result;
-        if(dr&&dr.start&&!startSeen)startSeen=dr.start;
+        if(dr&&dr.start&&(!startSeen||dr.start>startSeen))startSeen=dr.start;
         if(dr){const sc=scoreParsed(dr);if(sc>bestScore){bestScore=sc;best=dr}if(dr.stake&&dr.mult&&dr.legs.length&&dr.legs.every(l=>!/[“”‘’~@|]/.test(l)))break}
       }
       if(best){if(!best.result&&resSeen)best.result=resSeen;if(startSeen)best.start=startSeen;drafts.push(best);continue}
@@ -768,6 +876,10 @@ async function shareRecap(){
 }
 
 function setupUI(){
+  window.addEventListener('paste',e=>{const fl=[...((e.clipboardData&&e.clipboardData.files)||[])].filter(f=>/^image\//.test(f.type));if(fl.length&&!$('app').classList.contains('hide')&&!$('imgBtn').disabled){e.preventDefault();readImages(fl)}});
+  const dz=$('cIn').closest('.card');
+  dz.addEventListener('dragover',e=>e.preventDefault());
+  dz.addEventListener('drop',e=>{const fl=[...((e.dataTransfer&&e.dataTransfer.files)||[])].filter(f=>/^image\//.test(f.type));if(fl.length){e.preventDefault();readImages(fl)}});
   $('rcBtn').onclick=makeRecap;$('rcAmt').onchange=()=>{if(!$('rcOut').classList.contains('hide'))makeRecap()};
   $('rcShare').onclick=shareRecap;$('rcDl').onclick=()=>{if(rcBlob)saveRecap()};
   $('gLogin').onclick=()=>goLogin('');
