@@ -88,7 +88,7 @@ ul.al{margin:6px 0 0;padding-left:18px}
 
   </div>
 
-  <h2>Calcular un ticket <span style="font-size:11px;opacity:.6;font-weight:400">· versión 26</span></h2>
+  <h2>Calcular un ticket <span style="font-size:11px;opacity:.6;font-weight:400">· versión 27</span></h2>
   <div class="card">
     <label>Pega o escribe cada pick con su multiplicador, uno por línea</label>
     <textarea id="cIn" rows="4" placeholder="Robinson 6.5+ recepciones 1.54x&#10;Shough 234 yds 1.67x&#10;Total 2.3x   (opcional: lo que paga el ticket)"></textarea>
@@ -307,6 +307,15 @@ function parseSlip(lines){
     if(m&&(cur||hasFoot)){
       let nm=m[1].replace(/^(?:[xX][xX]?|[a-z]{1,2})\s+/,'').replace(/^[A-Z]-\s*/,'').replace(/^[A-Z]\s+(?=[A-Z][a-z])/,'').replace(/\bIll\b/,'III').replace(/\.{2,}$/,'…').trim();
       legs.push(nm+' '+(cur||'')+' '+m[3].replace(/\.0+$/,'')+'+');cur=null;continue;
+    }
+    if(cur&&cur!=='Spread'&&!m){
+      const lm=o.t.match(/^(.*?[A-Za-z…])[^A-Za-z\d]*(\d{1,3}(?:\.\d)?)\s*[+tT*4#]?\s*\W{0,2}$/);
+      if(lm&&/[A-Za-z]{3,}/.test(lm[1])){
+        let nm=lm[1].replace(/^(?:\W*[A-Za-z]{1,2}\b\W*)+(?=[A-Z][a-z])/,'').replace(/^[^A-Za-z]+/,'');
+        if(/\s/.test(nm.replace(/\s+(?:[A-Z]{2,4}|[a-z]{2,3})\W*$/,'')))nm=nm.replace(/\s+(?:[A-Z]{2,4}|[a-z]{2,3})\W*$/,'');
+        nm=nm.replace(/\.{2,}$/,'…').trim();
+        if(nm.length>=3&&parseFloat(lm[2])>0){legs.push(nm+' '+cur+' '+lm[2].replace(/\.0+$/,'')+'+');cur=null;continue}
+      }
     }
     if(!cur&&!legs.length&&!pairs.length&&teams.length<2&&!/\d/.test(o.t)){const tn=cleanTeam(o.t);if(tn.length>=4&&/^[A-Z]/.test(tn))teams.push(tn)}
   }
@@ -773,9 +782,9 @@ function prepImage(file,bin,w){
   });
 }
 let dbgRaw='';
-function showDbg(bad){let e=$('ocrDbg');if(!e){e=document.createElement('textarea');e.id='ocrDbg';e.readOnly=true;e.style.cssText='width:100%;height:120px;margin-top:8px;font-size:12px';$('ocrMsg').after(e)}e.style.display=bad?'block':'none';e.value=bad?'TEXTO QUE LEYÓ (mándaselo a Alan):\n'+dbgRaw:''}
+function showDbg(bad,hide){let d=$('ocrDbgW');if(!d){d=document.createElement('details');d.id='ocrDbgW';d.style.cssText='margin-top:8px;font-size:13px';d.innerHTML='<summary style="cursor:pointer;opacity:.8">Ver el texto que leyó (por si algo salió mal)</summary><textarea id="ocrDbg" readonly style="width:100%;height:140px;margin-top:6px;font-size:12px"></textarea>';$('ocrMsg').after(d)}d.style.display=hide?'none':'block';d.open=!!bad;$('ocrDbg').value='TEXTO QUE LEYÓ:\n'+dbgRaw}
 async function readImages(files){
-  const m=$('ocrMsg');showDbg(false);
+  const m=$('ocrMsg');showDbg(false,true);
   if(!files.length)return;
   m.className='msg';m.textContent='Cargando lector de imágenes (la primera vez tarda unos segundos)…';
   $('imgBtn').disabled=true;
@@ -831,7 +840,7 @@ async function readImages(files){
       if(d.legMult||d.mult)runCalc();
       if(false)$('cOut').innerHTML='<div class="card" style="background:var(--bg)"><div class="k">Leí tu ticket'+(d.game?' ('+esc(d.game)+')':'')+'</div><div class="v">Momio '+d.mult+'x</div><div class="msg">Entrada '+(d.stake?money(d.stake):'?')+(d.payout?' · pago '+money(d.payout):'')+' · '+d.legs.length+' picks<br>Para empatar necesitas acertar al menos <b>'+pc(1/d.mult)+'</b> de las veces con tickets como este.</div></div>';
       m.className='msg';m.textContent=d.mult?'Listo: pasé entrada, momio y picks a "Guardar ticket"'+(d.result?' y marqué el resultado como '+(d.result==='w'?'GANÓ':'PERDIÓ'):'')+'. Revisa que estén bien'+(d.start?' (incluida la hora del partido)':'')+' y toca Guardar.':'Pasé los picks a "Guardar ticket", pero esta captura no trae entrada ni momio: escríbelos tú.';
-      if(!(d.stake&&d.legs.length))showDbg(true);
+      showDbg(!(d.stake&&d.legs.length));
       if(drafts.length>1)m.textContent+=' (Subiste varias capturas: solo usé la primera, sube las otras una por una.)';
       $('game').scrollIntoView({behavior:'smooth',block:'center'});
       return;
